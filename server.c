@@ -2,136 +2,156 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <arpa/inet.h>
-#include <openssl/aes.h>
+#include <pthread.h>
 
-#define MAX_CLIENTS 100
+#define MAX_CLIENTES 10
 #define BUFFER_SIZE 1024
-#define PORT 8080
 
 typedef struct
 {
 	int socket;
-	char username[50];
+	char nombre[50];
 	char status[10];
-	struct sockaddr_in address;
-} Client;
+	struct sockaddr_in direccion;
+} Cliente;
 
-Client clients[MAX_CLIENTS];
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
-const unsigned char AES_KEY[16] = "1234567890123456"; // Clave AES (Ejemplo)
+Cliente clientes[MAX_CLIENTES];
+pthread_mutex_t clientes_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void encrypt_message(const char *input, unsigned char *output)
+void broadcast(const char *mensaje, int remitente)
 {
-	AES_KEY encryptKey;
-	AES_set_encrypt_key(AES_KEY, 128, &encryptKey);
-	AES_encrypt((unsigned char *)input, output, &encryptKey);
-}
-
-void decrypt_message(const unsigned char *input, char *output)
-{
-	AES_KEY decryptKey;
-	AES_set_decrypt_key(AES_KEY, 128, &decryptKey);
-	AES_decrypt(input, (unsigned char *)output, &decryptKey);
-}
-
-void send_message_to_all(char *message)
-{
-	pthread_mutex_lock(&clients_mutex);
-	for (int i = 0; i < MAX_CLIENTS; i++)
+	pthread_mutex_lock(&clientes_mutex);
+	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
-		if (clients[i].socket != 0)
+		if (clientes[i].socket != 0 && clientes[i].socket != remitente)
 		{
-			send(clients[i].socket, message, strlen(message), 0);
+			send(clientes[i].socket, mensaje, strlen(mensaje), 0);
 		}
 	}
-	pthread_mutex_unlock(&clients_mutex);
+	pthread_mutex_unlock(&clientes_mutex);
 }
 
-void send_user_list(int client_socket)
+void enviar_mensaje_privado(const char *destinatario, const char *mensaje, int remitente)
 {
-	char user_list[BUFFER_SIZE] = "Usuarios conectados:\n";
-	pthread_mutex_lock(&clients_mutex);
-	for (int i = 0; i < MAX_CLIENTS; i++)
+	pthread_mutex_lock(&clientes_mutex);
+	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
-		if (clients[i].socket != 0)
+		if (clientes[i].socket != 0 && strcmp(clientes[i].nombre, destinatario) == 0)
 		{
-			strcat(user_list, clients[i].username);
-			strcat(user_list, "\n");
+			send(clientes[i].socket, mensaje, strlen(mensaje), 0);
+			pthread_mutex_unlock(&clientes_mutex);
+			return;
 		}
 	}
-	pthread_mutex_unlock(&clients_mutex);
-	send(client_socket, user_list, strlen(user_list), 0);
+	pthread_mutex_unlock(&clientes_mutex);
 }
 
-void process_command(char *buffer, int client_socket)
+void manejar_cliente(void *arg)
 {
-	if (strncmp(buffer, "/status ", 8) == 0)
-	{
-		char status[10];
-		sscanf(buffer, "/status %s", status);
-		pthread_mutex_lock(&clients_mutex);
-		for (int i = 0; i < MAX_CLIENTS; i++)
-		{
-			if (clients[i].socket == client_socket)
-			{
-				strcpy(clients[i].status, status);
-				break;
-			}
-		}
-		pthread_mutex_unlock(&clients_mutex);
-	}
-	else if (strncmp(buffer, "/users", 6) == 0)
-	{
-		send_user_list(client_socket);
-	}
-	else
-	{
-		send(client_socket, "Comando no reconocido\n", 23, 0);
-	}
-}
-
-void *handle_client(void *arg)
-{
-	int client_socket = *((int *)arg);
+	int cliente_socket = *(int *)arg;
 	char buffer[BUFFER_SIZE];
+	char nombre[50];
+
+	recv(cliente_socket, nombre, sizeof(nombre), 0);
+	strcpy(clientes[cliente_socket].nombre, nombre);
+	strcpy(clientes[cliente_socket].status, "ACTIVO");
+
+	snprintf(buffer, sizeof(buffer), "%s se ha conectado.\n", nombre);
+	broadcast(buffer, cliente_socket);
+
 	while (1)
 	{
 		memset(buffer, 0, BUFFER_SIZE);
-		int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
-		if (bytes_received <= 0)
+		int bytes_recibidos = recv(cliente_socket, buffer, BUFFER_SIZE, 0);
+		if (bytes_recibidos <= 0)
 		{
 			break;
 		}
-		process_command(buffer, client_socket);
+
+		if (strncmp(buffer, "/users", 6) == 0)
+		{
+			pthread_mutex_lock(&clientes_mutex);
+			char lista[BUFFER_SIZE] = "Usuarios conectados:\n";
+			for (int i = 0; i < MAX_CLIENTES; i++)
+			{
+				if (clientes[i].socket != 0)
+				{
+					strcat(lista, clientes[i].nombre);
+					strcat(lista, "\n");
+				}
+			}
+			send(cliente_socket, lista, strlen(lista), 0);
+			pthread_mutex_unlock(&clientes_mutex);
+		}
+		else if (strncmp(buffer, "/msg", 4) == 0)
+		{
+			char destinatario[50], mensaje[BUFFER_SIZE];
+			sscanf(buffer, "/msg %s %[^\n]", destinatario, mensaje);
+			enviar_mensaje_privado(destinatario, mensaje, cliente_socket);
+		}
+		else if (strncmp(buffer, "/status", 7) == 0)
+		{
+			char nuevo_status[10];
+			sscanf(buffer, "/status %s", nuevo_status);
+			pthread_mutex_lock(&clientes_mutex);
+			strcpy(clientes[cliente_socket].status, nuevo_status);
+			pthread_mutex_unlock(&clientes_mutex);
+		}
+		else
+		{
+			broadcast(buffer, cliente_socket);
+		}
 	}
-	close(client_socket);
-	return NULL;
+
+	close(cliente_socket);
+	pthread_mutex_lock(&clientes_mutex);
+	clientes[cliente_socket].socket = 0;
+	pthread_mutex_unlock(&clientes_mutex);
+	snprintf(buffer, sizeof(buffer), "%s se ha desconectado.\n", nombre);
+	broadcast(buffer, cliente_socket);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-	int server_socket, client_socket;
-	struct sockaddr_in server_addr, client_addr;
-	socklen_t client_len = sizeof(client_addr);
+	if (argc != 2)
+	{
+		printf("Uso: %s <puerto>\n", argv[0]);
+		return 1;
+	}
 
-	server_socket = socket(AF_INET, SOCK_STREAM, 0);
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_addr.s_addr = INADDR_ANY;
-	server_addr.sin_port = htons(PORT);
+	int servidor_socket, cliente_socket;
+	struct sockaddr_in servidor_addr, cliente_addr;
+	socklen_t cliente_len = sizeof(cliente_addr);
 
-	bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
-	listen(server_socket, 10);
+	servidor_socket = socket(AF_INET, SOCK_STREAM, 0);
+	servidor_addr.sin_family = AF_INET;
+	servidor_addr.sin_addr.s_addr = INADDR_ANY;
+	servidor_addr.sin_port = htons(atoi(argv[1]));
 
-	printf("Servidor escuchando en el puerto %d\n", PORT);
+	bind(servidor_socket, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr));
+	listen(servidor_socket, MAX_CLIENTES);
+
+	printf("Servidor en ejecución en el puerto %s...\n", argv[1]);
 
 	while (1)
 	{
-		client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
-		pthread_t thread;
-		pthread_create(&thread, NULL, handle_client, &client_socket);
+		cliente_socket = accept(servidor_socket, (struct sockaddr *)&cliente_addr, &cliente_len);
+		pthread_mutex_lock(&clientes_mutex);
+		for (int i = 0; i < MAX_CLIENTES; i++)
+		{
+			if (clientes[i].socket == 0)
+			{
+				clientes[i].socket = cliente_socket;
+				clientes[i].direccion = cliente_addr;
+				pthread_t hilo;
+				pthread_create(&hilo, NULL, (void *)manejar_cliente, &cliente_socket);
+				break;
+			}
+		}
+		pthread_mutex_unlock(&clientes_mutex);
 	}
 
+	close(servidor_socket);
 	return 0;
 }

@@ -4,112 +4,62 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-#include <ncurses.h>
-#include <openssl/aes.h>
 
 #define BUFFER_SIZE 1024
-const unsigned char AES_KEY[16] = "1234567890123456"; // Clave AES (Ejemplo)
 
-int socket_fd;
-struct sockaddr_in server_addr;
+int socket_cliente;
 
-void encrypt_message(const char *input, unsigned char *output)
-{
-    AES_KEY encryptKey;
-    AES_set_encrypt_key(AES_KEY, 128, &encryptKey);
-    AES_encrypt((unsigned char *)input, output, &encryptKey);
-}
-
-void decrypt_message(const unsigned char *input, char *output)
-{
-    AES_KEY decryptKey;
-    AES_set_decrypt_key(AES_KEY, 128, &decryptKey);
-    AES_decrypt(input, (unsigned char *)output, &decryptKey);
-}
-
-void init_ncurses()
-{
-    initscr();
-    cbreak();
-    noecho();
-    scrollok(stdscr, TRUE);
-}
-
-void display_message(const char *msg)
-{
-    printw("%s\n", msg);
-    refresh();
-}
-
-void *receive_messages(void *arg)
+void *recibir_mensajes(void *arg)
 {
     char buffer[BUFFER_SIZE];
     while (1)
     {
         memset(buffer, 0, BUFFER_SIZE);
-        int bytes_received = recv(socket_fd, buffer, BUFFER_SIZE, 0);
-        if (bytes_received <= 0)
+        int bytes = recv(socket_cliente, buffer, BUFFER_SIZE, 0);
+        if (bytes <= 0)
         {
-            display_message("Desconectado del servidor. Intentando reconectar...");
-            close(socket_fd);
-            reconnect();
+            printf("Desconectado del servidor.\n");
+            exit(1);
         }
-        else
-        {
-            display_message(buffer);
-        }
-    }
-    return NULL;
-}
-
-void reconnect()
-{
-    while (1)
-    {
-        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0)
-        {
-            display_message("Reconectado al servidor.");
-            return;
-        }
-        sleep(3);
+        printf("%s\n", buffer);
     }
 }
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3)
+    if (argc != 4)
     {
-        printf("Uso: %s <IP del servidor> <puerto>\n", argv[0]);
+        printf("Uso: %s <IP Servidor> <Puerto> <Usuario>\n", argv[0]);
         return 1;
     }
 
-    char *server_ip = argv[1];
-    int port = atoi(argv[2]);
+    struct sockaddr_in servidor_addr;
+    pthread_t hilo;
 
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+    socket_cliente = socket(AF_INET, SOCK_STREAM, 0);
+    servidor_addr.sin_family = AF_INET;
+    servidor_addr.sin_port = htons(atoi(argv[2]));
+    inet_pton(AF_INET, argv[1], &servidor_addr.sin_addr);
 
-    if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    if (connect(socket_cliente, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr)) == -1)
     {
-        printf("Error al conectar con el servidor.\n");
+        perror("Error en connect");
         return 1;
     }
 
-    init_ncurses();
-    pthread_t receive_thread;
-    pthread_create(&receive_thread, NULL, receive_messages, NULL);
+    send(socket_cliente, argv[3], strlen(argv[3]), 0);
+    printf("Conectado al chat como: %s\n", argv[3]);
 
-    char input[BUFFER_SIZE];
+    pthread_create(&hilo, NULL, recibir_mensajes, NULL);
+
+    char mensaje[BUFFER_SIZE];
     while (1)
     {
-        getstr(input);
-        send(socket_fd, input, strlen(input), 0);
+        memset(mensaje, 0, BUFFER_SIZE);
+        fgets(mensaje, BUFFER_SIZE, stdin);
+        send(socket_cliente, mensaje, strlen(mensaje), 0);
     }
 
-    endwin();
-    close(socket_fd);
+    close(socket_cliente);
     return 0;
 }
