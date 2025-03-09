@@ -32,18 +32,30 @@ void broadcast(const char *mensaje, int remitente)
 	pthread_mutex_unlock(&clientes_mutex);
 }
 
-void enviar_mensaje_privado(const char *destinatario, const char *mensaje, int remitente)
+void enviar_mensaje_privado(const char *remitente, const char *destinatario, const char *mensaje, int remitente_socket)
 {
 	pthread_mutex_lock(&clientes_mutex);
+	int encontrado = 0;
+
 	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
 		if (clientes[i].socket != 0 && strcmp(clientes[i].nombre, destinatario) == 0)
 		{
-			send(clientes[i].socket, mensaje, strlen(mensaje), 0);
-			pthread_mutex_unlock(&clientes_mutex);
-			return;
+			char buffer[BUFFER_SIZE];
+			snprintf(buffer, sizeof(buffer), "[Privado de %s]: %s\n", remitente, mensaje);
+			send(clientes[i].socket, buffer, strlen(buffer), 0);
+			encontrado = 1;
+			break;
 		}
 	}
+
+	if (!encontrado)
+	{
+		char error_msg[BUFFER_SIZE];
+		snprintf(error_msg, sizeof(error_msg), "Usuario '%s' no encontrado.\n", destinatario);
+		send(remitente_socket, error_msg, strlen(error_msg), 0);
+	}
+
 	pthread_mutex_unlock(&clientes_mutex);
 }
 
@@ -54,8 +66,19 @@ void manejar_cliente(void *arg)
 	char nombre[50];
 
 	recv(cliente_socket, nombre, sizeof(nombre), 0);
-	strcpy(clientes[cliente_socket].nombre, nombre);
-	strcpy(clientes[cliente_socket].status, "ACTIVO");
+
+	pthread_mutex_lock(&clientes_mutex);
+	for (int i = 0; i < MAX_CLIENTES; i++)
+	{
+		if (clientes[i].socket == 0)
+		{
+			clientes[i].socket = cliente_socket;
+			strcpy(clientes[i].nombre, nombre);
+			strcpy(clientes[i].status, "ACTIVO");
+			break;
+		}
+	}
+	pthread_mutex_unlock(&clientes_mutex);
 
 	snprintf(buffer, sizeof(buffer), "%s se ha conectado.\n", nombre);
 	broadcast(buffer, cliente_socket);
@@ -87,16 +110,31 @@ void manejar_cliente(void *arg)
 		else if (strncmp(buffer, "/msg", 4) == 0)
 		{
 			char destinatario[50], mensaje[BUFFER_SIZE];
-			sscanf(buffer, "/msg %s %[^\n]", destinatario, mensaje);
-			enviar_mensaje_privado(destinatario, mensaje, cliente_socket);
+			if (sscanf(buffer, "/msg %s %[^\n]", destinatario, mensaje) == 2)
+			{
+				enviar_mensaje_privado(nombre, destinatario, mensaje, cliente_socket);
+			}
+			else
+			{
+				send(cliente_socket, "Uso incorrecto. Formato: /msg <usuario> <mensaje>\n", 50, 0);
+			}
 		}
 		else if (strncmp(buffer, "/status", 7) == 0)
 		{
 			char nuevo_status[10];
-			sscanf(buffer, "/status %s", nuevo_status);
-			pthread_mutex_lock(&clientes_mutex);
-			strcpy(clientes[cliente_socket].status, nuevo_status);
-			pthread_mutex_unlock(&clientes_mutex);
+			if (sscanf(buffer, "/status %s", nuevo_status) == 1)
+			{
+				pthread_mutex_lock(&clientes_mutex);
+				for (int i = 0; i < MAX_CLIENTES; i++)
+				{
+					if (clientes[i].socket == cliente_socket)
+					{
+						strcpy(clientes[i].status, nuevo_status);
+						break;
+					}
+				}
+				pthread_mutex_unlock(&clientes_mutex);
+			}
 		}
 		else
 		{
@@ -106,8 +144,16 @@ void manejar_cliente(void *arg)
 
 	close(cliente_socket);
 	pthread_mutex_lock(&clientes_mutex);
-	clientes[cliente_socket].socket = 0;
+	for (int i = 0; i < MAX_CLIENTES; i++)
+	{
+		if (clientes[i].socket == cliente_socket)
+		{
+			clientes[i].socket = 0;
+			break;
+		}
+	}
 	pthread_mutex_unlock(&clientes_mutex);
+
 	snprintf(buffer, sizeof(buffer), "%s se ha desconectado.\n", nombre);
 	broadcast(buffer, cliente_socket);
 }
@@ -137,19 +183,8 @@ int main(int argc, char *argv[])
 	while (1)
 	{
 		cliente_socket = accept(servidor_socket, (struct sockaddr *)&cliente_addr, &cliente_len);
-		pthread_mutex_lock(&clientes_mutex);
-		for (int i = 0; i < MAX_CLIENTES; i++)
-		{
-			if (clientes[i].socket == 0)
-			{
-				clientes[i].socket = cliente_socket;
-				clientes[i].direccion = cliente_addr;
-				pthread_t hilo;
-				pthread_create(&hilo, NULL, (void *)manejar_cliente, &cliente_socket);
-				break;
-			}
-		}
-		pthread_mutex_unlock(&clientes_mutex);
+		pthread_t hilo;
+		pthread_create(&hilo, NULL, (void *)manejar_cliente, &cliente_socket);
 	}
 
 	close(servidor_socket);
