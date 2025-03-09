@@ -1,0 +1,26 @@
+## Como corrrer el programa
+
+Compilar:
+gcc server.c -o server -lpthread
+gcc client.c -o client -lpthread
+
+Iniciar el servidor:
+./server 8080
+
+Conectar clientes:
+En terminal 1:
+./client 127.0.0.1 8080 usuario1
+
+En terminal 2:
+./client 127.0.0.1 8080 usuario2
+
+En terminal 3:
+./client 127.0.0.1 8080 usuario3
+
+## Enviar un mensaje privado
+
+Esquema:
+/msg <usuario> <mensaje>
+
+Ejemplo:
+/msg usuario2 Hola, este es un mensaje privado
