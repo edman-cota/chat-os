@@ -29,17 +29,32 @@ int main(int argc, char *argv[])
 {
     if (argc != 4)
     {
-        printf("Uso: %s <IP Servidor> <Puerto> <Usuario>\n", argv[0]);
+        printf("Uso: %s <Usuario> <IP Servidor> <Puerto>\n", argv[0]);
         return 1;
     }
+
+    char *username = argv[1];  // Nombre del usuario
+    char *server_ip = argv[2]; // IP del servidor
+    int port = atoi(argv[3]);  // Puerto
 
     struct sockaddr_in servidor_addr;
     pthread_t hilo;
 
     socket_cliente = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_cliente == -1)
+    {
+        perror("Error al crear socket del cliente");
+        return 1;
+    }
+
     servidor_addr.sin_family = AF_INET;
-    servidor_addr.sin_port = htons(atoi(argv[2]));
-    inet_pton(AF_INET, argv[1], &servidor_addr.sin_addr);
+    servidor_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, server_ip, &servidor_addr.sin_addr) <= 0)
+    {
+        perror("Dirección IP no válida");
+        return 1;
+    }
 
     if (connect(socket_cliente, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr)) == -1)
     {
@@ -47,8 +62,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    send(socket_cliente, argv[3], strlen(argv[3]), 0);
-    printf("Conectado al chat como: %s\n", argv[3]);
+    send(socket_cliente, username, strlen(username), 0);
+    printf("Conectado al chat como: %s\n", username);
 
     pthread_create(&hilo, NULL, recibir_mensajes, NULL);
 

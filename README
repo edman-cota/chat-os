@@ -5,17 +5,17 @@ gcc server.c -o server -lpthread
 gcc client.c -o client -lpthread
 
 Iniciar el servidor:
-./server 8080
+./server 50213
 
 Conectar clientes:
 En terminal 1:
-./client 127.0.0.1 8080 usuario1
+./client usuario1 127.0.0.1 50213
 
 En terminal 2:
-./client 127.0.0.1 8080 usuario2
+./client usuario2 127.0.0.1 50213
 
 En terminal 3:
-./client 127.0.0.1 8080 usuario3
+./client usuario3 127.0.0.1 50213
 
 ## Enviar un mensaje privado
 
