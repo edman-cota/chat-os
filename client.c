@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 
     char *username = argv[1];  // Nombre del usuario
     char *server_ip = argv[2]; // IP del servidor
-    int port = atoi(argv[3]);  // Puerto
+    int port = atoi(argv[3]);  // Puerto - Usamos la función atoi (ASCII to Integer) para convertir el puerto que recibimos a un valor entero.
 
     struct sockaddr_in servidor_addr;
     pthread_t hilo;
