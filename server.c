@@ -17,11 +17,13 @@ typedef struct
 } Cliente;
 
 Cliente clientes[MAX_CLIENTES];
-pthread_mutex_t clientes_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t clientes_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex para proteger el acceso a la lista de clientes
 
+// enviar mensaje a todos menos al remitente
 void broadcast(const char *mensaje, int remitente)
 {
-	pthread_mutex_lock(&clientes_mutex);
+	pthread_mutex_lock(&clientes_mutex); // Bloqueamos acceso a la lista de clientes
+
 	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
 		if (clientes[i].socket != 0 && clientes[i].socket != remitente)
@@ -29,7 +31,8 @@ void broadcast(const char *mensaje, int remitente)
 			send(clientes[i].socket, mensaje, strlen(mensaje), 0);
 		}
 	}
-	pthread_mutex_unlock(&clientes_mutex);
+
+	pthread_mutex_unlock(&clientes_mutex); // Desbloqueamos el acceso
 }
 
 void enviar_mensaje_privado(const char *remitente, const char *destinatario, const char *mensaje, int remitente_socket)
@@ -175,16 +178,39 @@ int main(int argc, char *argv[])
 	servidor_addr.sin_addr.s_addr = INADDR_ANY;
 	servidor_addr.sin_port = htons(atoi(argv[1]));
 
-	bind(servidor_socket, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr));
-	listen(servidor_socket, MAX_CLIENTES);
+	if (bind(servidor_socket, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr)) < 0)
+	{
+		perror("Error al hacer bind");
+		close(servidor_socket);
+		return 1;
+	}
+
+	if (listen(servidor_socket, MAX_CLIENTES) < 0)
+	{
+		perror("Error al escuchar conexiones");
+		close(servidor_socket);
+		return 1;
+	}
 
 	printf("Servidor en ejecución en el puerto %s...\n", argv[1]);
 
 	while (1)
 	{
 		cliente_socket = accept(servidor_socket, (struct sockaddr *)&cliente_addr, &cliente_len);
+		if (cliente_socket < 0)
+		{
+			perror("Error al aceptar la conexión del cliente");
+			continue;
+		}
+
+		printf("Cliente conectado desde %s:%d\n", inet_ntoa(cliente_addr.sin_addr), ntohs(cliente_addr.sin_port));
+
 		pthread_t hilo;
-		pthread_create(&hilo, NULL, (void *)manejar_cliente, &cliente_socket);
+		if (pthread_create(&hilo, NULL, (void *)manejar_cliente, &cliente_socket) != 0)
+		{
+			perror("Error al crear el hilo para el cliente");
+			close(cliente_socket);
+		}
 	}
 
 	close(servidor_socket);

@@ -9,18 +9,21 @@
 
 int socket_cliente;
 
+// Esta función se ejecuta en un hilo separado, por lo que el cliente puede recibir mensajes mientras escribe otros
 void *recibir_mensajes(void *arg)
 {
     char buffer[BUFFER_SIZE];
     while (1)
     {
-        memset(buffer, 0, BUFFER_SIZE);
-        int bytes = recv(socket_cliente, buffer, BUFFER_SIZE, 0);
+        memset(buffer, 0, BUFFER_SIZE);                           // Limpia el buffer antes de recibir datos
+        int bytes = recv(socket_cliente, buffer, BUFFER_SIZE, 0); // Recibe datos del servidor
+
         if (bytes <= 0)
         {
             printf("Desconectado del servidor.\n");
             exit(1);
         }
+
         printf("%s\n", buffer);
     }
 }
@@ -47,7 +50,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    servidor_addr.sin_family = AF_INET;
+    servidor_addr.sin_family = AF_INET; // AF_INET → Indica que se usa IPv4
     servidor_addr.sin_port = htons(port);
 
     if (inet_pton(AF_INET, server_ip, &servidor_addr.sin_addr) <= 0)
@@ -56,17 +59,24 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (connect(socket_cliente, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr)) == -1)
+    int connectionStatus = connect(socket_cliente, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr));
+
+    if (connectionStatus == -1)
     {
-        perror("Error en connect");
+        perror("Error en connect al servidor");
+        printf("%d\n", connectionStatus);
+
         return 1;
     }
 
-    send(socket_cliente, username, strlen(username), 0);
+    send(socket_cliente, username, strlen(username), 0); // Envía el nombre de usuario al servidor
     printf("Conectado al chat como: %s\n", username);
 
+    // Crea un nuevo hilo para ejecutar recibir_mensajes
+    // Esto permite que el cliente reciba mensajes mientras sigue enviando
     pthread_create(&hilo, NULL, recibir_mensajes, NULL);
 
+    // El cliente puede escribir y enviar mensajes indefinidamente
     char mensaje[BUFFER_SIZE];
     while (1)
     {
