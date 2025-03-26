@@ -1,8 +1,15 @@
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <arpa/inet.h>
+#include <unistd.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <pthread.h>
 
 #define MAX_CLIENTES 10
@@ -145,7 +152,12 @@ void manejar_cliente(void *arg)
 		}
 	}
 
+#ifdef _WIN32
+	closesocket(cliente_socket);
+#else
 	close(cliente_socket);
+#endif
+
 	pthread_mutex_lock(&clientes_mutex);
 	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
@@ -169,11 +181,26 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+#ifdef _WIN32
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	{
+		printf("Error al inicializar Winsock.\n");
+		return 1;
+	}
+#endif
+
 	int servidor_socket, cliente_socket;
 	struct sockaddr_in servidor_addr, cliente_addr;
 	socklen_t cliente_len = sizeof(cliente_addr);
 
 	servidor_socket = socket(AF_INET, SOCK_STREAM, 0);
+	if (servidor_socket < 0)
+	{
+		perror("Error al crear el socket del servidor");
+		return 1;
+	}
+
 	servidor_addr.sin_family = AF_INET;
 	servidor_addr.sin_addr.s_addr = INADDR_ANY;
 	servidor_addr.sin_port = htons(atoi(argv[1]));
@@ -181,14 +208,24 @@ int main(int argc, char *argv[])
 	if (bind(servidor_socket, (struct sockaddr *)&servidor_addr, sizeof(servidor_addr)) < 0)
 	{
 		perror("Error al hacer bind");
+#ifdef _WIN32
+		closesocket(servidor_socket);
+		WSACleanup();
+#else
 		close(servidor_socket);
+#endif
 		return 1;
 	}
 
 	if (listen(servidor_socket, MAX_CLIENTES) < 0)
 	{
 		perror("Error al escuchar conexiones");
+#ifdef _WIN32
+		closesocket(servidor_socket);
+		WSACleanup();
+#else
 		close(servidor_socket);
+#endif
 		return 1;
 	}
 
@@ -203,16 +240,28 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
+		printf("%s:\n", cliente_addr);
+
 		printf("Cliente conectado desde %s:%d\n", inet_ntoa(cliente_addr.sin_addr), ntohs(cliente_addr.sin_port));
 
 		pthread_t hilo;
 		if (pthread_create(&hilo, NULL, (void *)manejar_cliente, &cliente_socket) != 0)
 		{
 			perror("Error al crear el hilo para el cliente");
+#ifdef _WIN32
+			closesocket(cliente_socket);
+#else
 			close(cliente_socket);
+#endif
 		}
 	}
 
+#ifdef _WIN32
+	closesocket(servidor_socket);
+	WSACleanup();
+#else
 	close(servidor_socket);
+#endif
+
 	return 0;
 }

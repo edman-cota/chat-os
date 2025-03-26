@@ -1,9 +1,20 @@
+#ifdef _WIN32
+#define _WIN32_WINNT 0x0600
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#endif
 
 #define BUFFER_SIZE 1024
 
@@ -36,6 +47,16 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+#ifdef _WIN32
+    // Inicializar Winsock en Windows
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+    {
+        printf("Error al inicializar Winsock.\n");
+        return 1;
+    }
+#endif
+
     char *username = argv[1];  // Nombre del usuario
     char *server_ip = argv[2]; // IP del servidor
     int port = atoi(argv[3]);  // Puerto - Usamos la función atoi (ASCII to Integer) para convertir el puerto que recibimos a un valor entero.
@@ -47,6 +68,9 @@ int main(int argc, char *argv[])
     if (socket_cliente == -1)
     {
         perror("Error al crear socket del cliente");
+#ifdef _WIN32
+        WSACleanup();
+#endif
         return 1;
     }
 
@@ -56,6 +80,12 @@ int main(int argc, char *argv[])
     if (inet_pton(AF_INET, server_ip, &servidor_addr.sin_addr) <= 0)
     {
         perror("Dirección IP no válida");
+#ifdef _WIN32
+        closesocket(socket_cliente);
+        WSACleanup();
+#else
+        close(socket_cliente);
+#endif
         return 1;
     }
 
@@ -65,7 +95,12 @@ int main(int argc, char *argv[])
     {
         perror("Error en connect al servidor");
         printf("%d\n", connectionStatus);
-
+#ifdef _WIN32
+        closesocket(socket_cliente);
+        WSACleanup();
+#else
+        close(socket_cliente);
+#endif
         return 1;
     }
 
@@ -85,6 +120,11 @@ int main(int argc, char *argv[])
         send(socket_cliente, mensaje, strlen(mensaje), 0);
     }
 
+#ifdef _WIN32
+    closesocket(socket_cliente);
+    WSACleanup();
+#else
     close(socket_cliente);
+#endif
     return 0;
 }

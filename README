@@ -1,11 +1,23 @@
 ## Como corrrer el programa
 
 Compilar:
+Linux
 gcc server.c -o server -lpthread
 gcc client.c -o client -lpthread
 
+Windows
+gcc servidor.c -o servidor.exe -lws2_32 -lpthread
+gcc cliente.c -o cliente.exe -lws2_32 -lpthread
+
 Iniciar el servidor:
+
+Linux:
 ./server 50213
+
+Windows
+servidor.exe 50213
+
+Iniciar cliente:
 
 Conectar clientes:
 En terminal 1:
