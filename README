@@ -2,8 +2,8 @@
 
 Compilar:
 Linux
-gcc server.c -o server -lpthread
-gcc client.c -o client -lpthread
+gcc servidor.c -o servidor -lpthread
+gcc cliente.c -o cliente -lpthread
 
 Windows
 gcc servidor.c -o servidor.exe -lws2_32 -lpthread
