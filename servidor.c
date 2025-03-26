@@ -11,9 +11,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <json-c/json.h>
+#include <time.h>
 
 #define MAX_CLIENTES 10
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 2048
 
 typedef struct
 {
@@ -24,13 +26,11 @@ typedef struct
 } Cliente;
 
 Cliente clientes[MAX_CLIENTES];
-pthread_mutex_t clientes_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex para proteger el acceso a la lista de clientes
+pthread_mutex_t clientes_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// enviar mensaje a todos menos al remitente
 void broadcast(const char *mensaje, int remitente)
 {
-	pthread_mutex_lock(&clientes_mutex); // Bloqueamos acceso a la lista de clientes
-
+	pthread_mutex_lock(&clientes_mutex);
 	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
 		if (clientes[i].socket != 0 && clientes[i].socket != remitente)
@@ -38,8 +38,19 @@ void broadcast(const char *mensaje, int remitente)
 			send(clientes[i].socket, mensaje, strlen(mensaje), 0);
 		}
 	}
+	pthread_mutex_unlock(&clientes_mutex);
+}
 
-	pthread_mutex_unlock(&clientes_mutex); // Desbloqueamos el acceso
+void enviar_respuesta(int socket, const char *tipo, const char *contenido)
+{
+	struct json_object *respuesta = json_object_new_object();
+	json_object_object_add(respuesta, "tipo", json_object_new_string(tipo));
+	json_object_object_add(respuesta, "contenido", json_object_new_string(contenido));
+
+	const char *json_str = json_object_to_json_string(respuesta);
+	send(socket, json_str, strlen(json_str), 0);
+
+	json_object_put(respuesta);
 }
 
 void enviar_mensaje_privado(const char *remitente, const char *destinatario, const char *mensaje, int remitente_socket)
@@ -51,9 +62,15 @@ void enviar_mensaje_privado(const char *remitente, const char *destinatario, con
 	{
 		if (clientes[i].socket != 0 && strcmp(clientes[i].nombre, destinatario) == 0)
 		{
-			char buffer[BUFFER_SIZE];
-			snprintf(buffer, sizeof(buffer), "[Privado de %s]: %s\n", remitente, mensaje);
-			send(clientes[i].socket, buffer, strlen(buffer), 0);
+			struct json_object *msg_json = json_object_new_object();
+			json_object_object_add(msg_json, "tipo", json_object_new_string("privado"));
+			json_object_object_add(msg_json, "remitente", json_object_new_string(remitente));
+			json_object_object_add(msg_json, "contenido", json_object_new_string(mensaje));
+
+			const char *json_str = json_object_to_json_string(msg_json);
+			send(clientes[i].socket, json_str, strlen(json_str), 0);
+
+			json_object_put(msg_json);
 			encontrado = 1;
 			break;
 		}
@@ -61,9 +78,7 @@ void enviar_mensaje_privado(const char *remitente, const char *destinatario, con
 
 	if (!encontrado)
 	{
-		char error_msg[BUFFER_SIZE];
-		snprintf(error_msg, sizeof(error_msg), "Usuario '%s' no encontrado.\n", destinatario);
-		send(remitente_socket, error_msg, strlen(error_msg), 0);
+		enviar_respuesta(remitente_socket, "error", "Usuario no encontrado");
 	}
 
 	pthread_mutex_unlock(&clientes_mutex);
@@ -73,10 +88,25 @@ void manejar_cliente(void *arg)
 {
 	int cliente_socket = *(int *)arg;
 	char buffer[BUFFER_SIZE];
-	char nombre[50];
 
-	recv(cliente_socket, nombre, sizeof(nombre), 0);
+	// Recibir mensaje de conexión
+	recv(cliente_socket, buffer, BUFFER_SIZE, 0);
 
+	struct json_object *parsed_json = json_tokener_parse(buffer);
+	if (!parsed_json)
+	{
+		close(cliente_socket);
+		return;
+	}
+
+	json_object *usuario_obj, *tipo_obj;
+	json_object_object_get_ex(parsed_json, "usuario", &usuario_obj);
+	json_object_object_get_ex(parsed_json, "tipo", &tipo_obj);
+
+	const char *nombre = json_object_get_string(usuario_obj);
+	const char *tipo = json_object_get_string(tipo_obj);
+
+	// Registrar cliente
 	pthread_mutex_lock(&clientes_mutex);
 	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
@@ -90,74 +120,103 @@ void manejar_cliente(void *arg)
 	}
 	pthread_mutex_unlock(&clientes_mutex);
 
-	snprintf(buffer, sizeof(buffer), "%s se ha conectado.\n", nombre);
-	broadcast(buffer, cliente_socket);
+	// Notificar conexión
+	struct json_object *conexion_json = json_object_new_object();
+	json_object_object_add(conexion_json, "tipo", json_object_new_string("sistema"));
+	json_object_object_add(conexion_json, "contenido",
+						   json_object_new_string_printf("%s se ha conectado", nombre));
+	broadcast(json_object_to_json_string(conexion_json), cliente_socket);
+	json_object_put(conexion_json);
+	json_object_put(parsed_json);
 
 	while (1)
 	{
 		memset(buffer, 0, BUFFER_SIZE);
 		int bytes_recibidos = recv(cliente_socket, buffer, BUFFER_SIZE, 0);
 		if (bytes_recibidos <= 0)
-		{
 			break;
-		}
 
-		if (strncmp(buffer, "/users", 6) == 0)
+		parsed_json = json_tokener_parse(buffer);
+		if (!parsed_json)
+			continue;
+
+		json_object *tipo_obj, *contenido_obj;
+		json_object_object_get_ex(parsed_json, "tipo", &tipo_obj);
+		json_object_object_get_ex(parsed_json, "contenido", &contenido_obj);
+		const char *tipo = json_object_get_string(tipo_obj);
+		const char *contenido = json_object_get_string(contenido_obj);
+
+		if (strcmp(tipo, "comando") == 0)
 		{
-			pthread_mutex_lock(&clientes_mutex);
-			char lista[BUFFER_SIZE] = "Usuarios conectados:\n";
-			for (int i = 0; i < MAX_CLIENTES; i++)
+			if (strncmp(contenido, "/users", 6) == 0)
 			{
-				if (clientes[i].socket != 0)
-				{
-					strcat(lista, clientes[i].nombre);
-					strcat(lista, "\n");
-				}
-			}
-			send(cliente_socket, lista, strlen(lista), 0);
-			pthread_mutex_unlock(&clientes_mutex);
-		}
-		else if (strncmp(buffer, "/msg", 4) == 0)
-		{
-			char destinatario[50], mensaje[BUFFER_SIZE];
-			if (sscanf(buffer, "/msg %s %[^\n]", destinatario, mensaje) == 2)
-			{
-				enviar_mensaje_privado(nombre, destinatario, mensaje, cliente_socket);
-			}
-			else
-			{
-				send(cliente_socket, "Uso incorrecto. Formato: /msg <usuario> <mensaje>\n", 50, 0);
-			}
-		}
-		else if (strncmp(buffer, "/status", 7) == 0)
-		{
-			char nuevo_status[10];
-			if (sscanf(buffer, "/status %s", nuevo_status) == 1)
-			{
+				struct json_object *respuesta = json_object_new_object();
+				struct json_object *usuarios_array = json_object_new_array();
+
 				pthread_mutex_lock(&clientes_mutex);
 				for (int i = 0; i < MAX_CLIENTES; i++)
 				{
-					if (clientes[i].socket == cliente_socket)
+					if (clientes[i].socket != 0)
 					{
-						strcpy(clientes[i].status, nuevo_status);
-						break;
+						struct json_object *user_obj = json_object_new_object();
+						json_object_object_add(user_obj, "nombre", json_object_new_string(clientes[i].nombre));
+						json_object_object_add(user_obj, "status", json_object_new_string(clientes[i].status));
+						json_object_array_add(usuarios_array, user_obj);
 					}
 				}
 				pthread_mutex_unlock(&clientes_mutex);
+
+				json_object_object_add(respuesta, "tipo", json_object_new_string("lista_usuarios"));
+				json_object_object_add(respuesta, "usuarios", usuarios_array);
+				send(cliente_socket, json_object_to_json_string(respuesta), strlen(json_object_to_json_string(respuesta)), 0);
+				json_object_put(respuesta);
+			}
+			else if (strncmp(contenido, "/msg", 4) == 0)
+			{
+				char destinatario[50], mensaje[BUFFER_SIZE];
+				if (sscanf(contenido, "/msg %s %[^\n]", destinatario, mensaje) == 2)
+				{
+					enviar_mensaje_privado(nombre, destinatario, mensaje, cliente_socket);
+				}
+				else
+				{
+					enviar_respuesta(cliente_socket, "error", "Formato incorrecto. Use: /msg usuario mensaje");
+				}
+			}
+			else if (strncmp(contenido, "/status", 7) == 0)
+			{
+				char nuevo_status[10];
+				if (sscanf(contenido, "/status %s", nuevo_status) == 1)
+				{
+					pthread_mutex_lock(&clientes_mutex);
+					for (int i = 0; i < MAX_CLIENTES; i++)
+					{
+						if (clientes[i].socket == cliente_socket)
+						{
+							strcpy(clientes[i].status, nuevo_status);
+							break;
+						}
+					}
+					pthread_mutex_unlock(&clientes_mutex);
+					enviar_respuesta(cliente_socket, "sistema", "Estado actualizado");
+				}
 			}
 		}
 		else
 		{
-			broadcast(buffer, cliente_socket);
+			// Mensaje normal
+			struct json_object *mensaje_json = json_object_new_object();
+			json_object_object_add(mensaje_json, "usuario", json_object_new_string(nombre));
+			json_object_object_add(mensaje_json, "tipo", json_object_new_string("mensaje"));
+			json_object_object_add(mensaje_json, "contenido", json_object_new_string(contenido));
+			broadcast(json_object_to_json_string(mensaje_json), cliente_socket);
+			json_object_put(mensaje_json);
 		}
+
+		json_object_put(parsed_json);
 	}
 
-#ifdef _WIN32
-	closesocket(cliente_socket);
-#else
-	close(cliente_socket);
-#endif
-
+	// Manejar desconexión
 	pthread_mutex_lock(&clientes_mutex);
 	for (int i = 0; i < MAX_CLIENTES; i++)
 	{
@@ -169,8 +228,18 @@ void manejar_cliente(void *arg)
 	}
 	pthread_mutex_unlock(&clientes_mutex);
 
-	snprintf(buffer, sizeof(buffer), "%s se ha desconectado.\n", nombre);
-	broadcast(buffer, cliente_socket);
+	struct json_object *desconexion_json = json_object_new_object();
+	json_object_object_add(desconexion_json, "tipo", json_object_new_string("sistema"));
+	json_object_object_add(desconexion_json, "contenido",
+						   json_object_new_string_printf("%s se ha desconectado", nombre));
+	broadcast(json_object_to_json_string(desconexion_json), cliente_socket);
+	json_object_put(desconexion_json);
+
+#ifdef _WIN32
+	closesocket(cliente_socket);
+#else
+	close(cliente_socket);
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -239,8 +308,6 @@ int main(int argc, char *argv[])
 			perror("Error al aceptar la conexión del cliente");
 			continue;
 		}
-
-		printf("%s:\n", cliente_addr);
 
 		printf("Cliente conectado desde %s:%d\n", inet_ntoa(cliente_addr.sin_addr), ntohs(cliente_addr.sin_port));
 
