@@ -16,12 +16,12 @@
 #include <pthread.h>
 #endif
 
-#include <json-c/json.h> // Biblioteca JSON
+#include <json-c/json.h>
 
-#define BUFFER_SIZE 2048 // Aumentado para acomodar JSON
+#define BUFFER_SIZE 2048
 
 int socket_cliente;
-char username[50]; // Ahora es global para usarlo en las funciones
+char username[50];
 
 void enviar_mensaje_json(const char *tipo, const char *contenido)
 {
@@ -58,6 +58,8 @@ void *recibir_mensajes(void *arg)
             struct json_object *usuario, *contenido;
             json_object_object_get_ex(parsed_json, "usuario", &usuario);
             json_object_object_get_ex(parsed_json, "contenido", &contenido);
+
+            printf("Prueba %s: ", json_object_get_string(usuario));
 
             printf("[%s]: %s\n",
                    json_object_get_string(usuario),
