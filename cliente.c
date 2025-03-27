@@ -62,6 +62,11 @@ void *recibir_mensajes(void *arg)
         struct json_object *parsed_json = json_tokener_parse(buffer);
         if (parsed_json != NULL)
         {
+            // Opcional: Mostrar el JSON formateado bonito
+            printf("\n--- JSON Parseado (formateado) ---\n");
+            printf("%s\n", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_PRETTY));
+            printf("----------------------------------\n");
+
             struct json_object *usuario, *contenido;
             json_object_object_get_ex(parsed_json, "usuario", &usuario);
             json_object_object_get_ex(parsed_json, "contenido", &contenido);
