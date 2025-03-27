@@ -59,19 +59,9 @@ void *recibir_mensajes(void *arg)
             json_object_object_get_ex(parsed_json, "usuario", &usuario);
             json_object_object_get_ex(parsed_json, "contenido", &contenido);
 
-            printf("Prueba %s: ", json_object_get_string(usuario));
-
-            if (json_object_get_string(usuario) == NULL)
-            {
-                printf("%s\n",
-                       json_object_get_string(contenido));
-            }
-            else
-            {
-                printf("[%s]: %s\n",
-                       json_object_get_string(usuario),
-                       json_object_get_string(contenido));
-            }
+            printf("[%s]: %s\n",
+                   json_object_get_string(usuario),
+                   json_object_get_string(contenido));
 
             json_object_put(parsed_json);
         }
