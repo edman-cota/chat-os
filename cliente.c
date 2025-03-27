@@ -51,6 +51,13 @@ void *recibir_mensajes(void *arg)
             exit(1);
         }
 
+        buffer[bytes] = '\0';
+
+        // Mostrar JSON recibido
+        printf("\n=== JSON RECIBIDO ===\n");
+        printf("%s\n", buffer);
+        printf("====================\n");
+
         // Parsear el JSON recibido
         struct json_object *parsed_json = json_tokener_parse(buffer);
         if (parsed_json != NULL)
