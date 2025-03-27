@@ -95,7 +95,11 @@ void manejar_cliente(void *arg)
 	struct json_object *parsed_json = json_tokener_parse(buffer);
 	if (!parsed_json)
 	{
+#ifdef _WIN32
+		closesocket(cliente_socket);
+#else
 		close(cliente_socket);
+#endif
 		return;
 	}
 
@@ -113,8 +117,8 @@ void manejar_cliente(void *arg)
 		if (clientes[i].socket == 0)
 		{
 			clientes[i].socket = cliente_socket;
-			strcpy(clientes[i].nombre, nombre);
-			strcpy(clientes[i].status, "ACTIVO");
+			strncpy(clientes[i].nombre, nombre, sizeof(clientes[i].nombre) - 1);
+			strncpy(clientes[i].status, "ACTIVO", sizeof(clientes[i].status) - 1);
 			break;
 		}
 	}
@@ -123,8 +127,11 @@ void manejar_cliente(void *arg)
 	// Notificar conexión
 	struct json_object *conexion_json = json_object_new_object();
 	json_object_object_add(conexion_json, "tipo", json_object_new_string("sistema"));
-	json_object_object_add(conexion_json, "contenido",
-						   json_object_new_string_printf("%s se ha conectado", nombre));
+
+	char temp_msg[100];
+	snprintf(temp_msg, sizeof(temp_msg), "%s se ha conectado", nombre);
+	json_object_object_add(conexion_json, "contenido", json_object_new_string(temp_msg));
+
 	broadcast(json_object_to_json_string(conexion_json), cliente_socket);
 	json_object_put(conexion_json);
 	json_object_put(parsed_json);
@@ -193,7 +200,7 @@ void manejar_cliente(void *arg)
 					{
 						if (clientes[i].socket == cliente_socket)
 						{
-							strcpy(clientes[i].status, nuevo_status);
+							strncpy(clientes[i].status, nuevo_status, sizeof(clientes[i].status) - 1);
 							break;
 						}
 					}
@@ -228,10 +235,14 @@ void manejar_cliente(void *arg)
 	}
 	pthread_mutex_unlock(&clientes_mutex);
 
+	// Notificar desconexión
 	struct json_object *desconexion_json = json_object_new_object();
 	json_object_object_add(desconexion_json, "tipo", json_object_new_string("sistema"));
-	json_object_object_add(desconexion_json, "contenido",
-						   json_object_new_string_printf("%s se ha desconectado", nombre));
+
+	char temp_msg2[100];
+	snprintf(temp_msg2, sizeof(temp_msg2), "%s se ha desconectado", nombre);
+	json_object_object_add(desconexion_json, "contenido", json_object_new_string(temp_msg2));
+
 	broadcast(json_object_to_json_string(desconexion_json), cliente_socket);
 	json_object_put(desconexion_json);
 
@@ -267,8 +278,19 @@ int main(int argc, char *argv[])
 	if (servidor_socket < 0)
 	{
 		perror("Error al crear el socket del servidor");
+#ifdef _WIN32
+		WSACleanup();
+#endif
 		return 1;
 	}
+
+	// Configuración del socket para reutilizar dirección
+	int opt = 1;
+#ifdef _WIN32
+	setsockopt(servidor_socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+#else
+	setsockopt(servidor_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#endif
 
 	servidor_addr.sin_family = AF_INET;
 	servidor_addr.sin_addr.s_addr = INADDR_ANY;
@@ -321,6 +343,8 @@ int main(int argc, char *argv[])
 			close(cliente_socket);
 #endif
 		}
+
+		pthread_detach(hilo); // Para que los recursos se liberen automáticamente
 	}
 
 #ifdef _WIN32
