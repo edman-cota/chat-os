@@ -146,7 +146,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
         else if (strncmp(message, "/ESTADO", 7) == 0)
         {
             // Comando para cambiar estado
-            char nuevo_estado[256];
+            char nuevo_estado[32];
             sscanf(message + 8, "%s", nuevo_estado);
 
             // Validar el estado
