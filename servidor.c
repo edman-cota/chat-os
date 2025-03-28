@@ -1,9 +1,22 @@
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <process.h>
+#define close(sock) closesocket(sock)
+#define CLEAR_SCREEN() system("cls")
+typedef SOCKET socket_t;
+#else
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <pthread.h>
+#define CLEAR_SCREEN() printf("\033[H\033[J")
+typedef int socket_t;
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <arpa/inet.h>
+#include <time.h>
 #include <json-c/json.h>
 
 #define MAX_CLIENTS 100
@@ -11,7 +24,7 @@
 
 typedef struct
 {
-	int socket;
+	socket_t socket;
 	char username[50];
 	char ip_address[16];
 	char estado[STATUS_LENGTH];
@@ -20,22 +33,26 @@ typedef struct
 
 // Declaraciones de funciones (prototipos)
 void *handle_client(void *socket_desc);
-void handle_register_client(struct json_object *parsed_json, int sock);
+void handle_register_client(struct json_object *parsed_json, socket_t sock);
 void broadcast_message(const char *message, const char *emisor);
 void send_direct_message(const char *receiver, const char *message, const char *emisor);
-void list_connected_users(int socket);
-void handle_status_change(struct json_object *parsed_json, int sock);
-void handle_mostrar(struct json_object *parsed_json, int sock);
-void remove_client_from_server(int socket);
-void send_json_response(int socket, const char *status, const char *key, const char *message);
-int register_new_client(int socket, const char *username, const char *ip_address);
+void list_connected_users(socket_t socket);
+void handle_status_change(struct json_object *parsed_json, socket_t sock);
+void handle_mostrar(struct json_object *parsed_json, socket_t sock);
+void remove_client_from_server(socket_t socket);
+void send_json_response(socket_t socket, const char *status, const char *key, const char *message);
+int register_new_client(socket_t socket, const char *username, const char *ip_address);
 
 Client *clients[MAX_CLIENTS];
+#ifdef _WIN32
+HANDLE clients_mutex;
+#else
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 void *handle_client(void *socket_desc)
 {
-	int sock = *(int *)socket_desc;
+	socket_t sock = *(socket_t *)socket_desc;
 	free(socket_desc);
 	char buffer[1024];
 	int read_size;
@@ -69,6 +86,7 @@ void *handle_client(void *socket_desc)
 	{
 		buffer[read_size] = '\0';
 		printf("Mensaje recibido en el servidor: %s\n", buffer);
+
 		struct json_object *msg_json = json_tokener_parse(buffer);
 		if (!msg_json)
 		{
@@ -99,10 +117,6 @@ void *handle_client(void *socket_desc)
 					json_object_object_get_ex(msg_json, "mensaje", &mensaje))
 				{
 					printf("[MENSAJE] %s: %s\n", json_object_get_string(usuario), json_object_get_string(mensaje));
-				}
-				else
-				{
-					printf("Error: mensaje mal formado\n");
 				}
 			}
 			else if (strcmp(tipo_str, "REGISTRO") == 0)
@@ -145,10 +159,6 @@ void *handle_client(void *socket_desc)
 			{
 				list_connected_users(sock);
 			}
-		}
-		else
-		{
-			printf("Error: Mensaje con formato incorrecto\n");
 		}
 
 		json_object_put(msg_json);
@@ -250,7 +260,7 @@ void send_direct_message(const char *receiver, const char *message, const char *
 	}
 }
 
-void list_connected_users(int socket)
+void list_connected_users(socket_t socket)
 {
 	pthread_mutex_lock(&clients_mutex);
 
@@ -355,7 +365,7 @@ void handle_mostrar(struct json_object *parsed_json, int sock)
 	}
 }
 
-void remove_client_from_server(int socket)
+void remove_client_from_server(socket_t socket)
 {
 	pthread_mutex_lock(&clients_mutex);
 	for (int i = 0; i < MAX_CLIENTS; i++)
@@ -370,7 +380,7 @@ void remove_client_from_server(int socket)
 	pthread_mutex_unlock(&clients_mutex);
 }
 
-void send_json_response(int socket, const char *status, const char *key, const char *message)
+void send_json_response(socket_t socket, const char *status, const char *key, const char *message)
 {
 	struct json_object *json_resp = json_object_new_object();
 
@@ -385,7 +395,7 @@ void send_json_response(int socket, const char *status, const char *key, const c
 	json_object_put(json_resp);
 }
 
-int register_new_client(int socket, const char *username, const char *ip_address)
+int register_new_client(socket_t socket, const char *username, const char *ip_address)
 {
 	pthread_mutex_lock(&clients_mutex);
 
@@ -422,19 +432,27 @@ int register_new_client(int socket, const char *username, const char *ip_address
 
 int main(int argc, char *argv[])
 {
-	int server_fd, new_socket;
+#ifdef _WIN32
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	{
+		fprintf(stderr, "Error al inicializar Winsock\n");
+		return 1;
+	}
+	clients_mutex = CreateMutex(NULL, FALSE, NULL);
+#endif
+
+	socket_t server_fd, new_socket;
 	struct sockaddr_in address;
 	socklen_t addrlen = sizeof(address);
 	int port;
 
-	// Verificar argumentos
 	if (argc != 2)
 	{
 		printf("Uso: %s <puerto>\n", argv[0]);
 		return 1;
 	}
 
-	// Convertir el puerto a entero
 	port = atoi(argv[1]);
 	if (port <= 0 || port > 65535)
 	{
@@ -447,14 +465,17 @@ int main(int argc, char *argv[])
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(port);
 
-	bind(server_fd, (struct sockaddr *)&address, sizeof(address));
-	listen(server_fd, MAX_CLIENTS);
+	if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+	{
+		perror("Error en bind");
+		return 1;
+	}
 
+	listen(server_fd, MAX_CLIENTS);
 	printf("Servidor escuchando en puerto %d\n", port);
 
 	while (1)
 	{
-		printf("Esperando conexiones\n");
 		new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
 		if (new_socket < 0)
 		{
@@ -465,13 +486,23 @@ int main(int argc, char *argv[])
 		printf("Nueva conexión aceptada desde %s:%d\n",
 			   inet_ntoa(address.sin_addr), ntohs(address.sin_port));
 
-		pthread_t thread_id;
-		int *new_sock = malloc(sizeof(int));
+#ifdef _WIN32
+		socket_t *new_sock = malloc(sizeof(socket_t));
 		*new_sock = new_socket;
-		pthread_create(&thread_id, NULL, handle_client, (void *)new_sock);
+		_beginthreadex(NULL, 0, (void *)handle_client, new_sock, 0, NULL);
+#else
+		pthread_t thread_id;
+		socket_t *new_sock = malloc(sizeof(socket_t));
+		*new_sock = new_socket;
+		pthread_create(&thread_id, NULL, handle_client, new_sock);
 		pthread_detach(thread_id);
+#endif
 	}
 
 	close(server_fd);
+#ifdef _WIN32
+	WSACleanup();
+	CloseHandle(clients_mutex);
+#endif
 	return 0;
 }
