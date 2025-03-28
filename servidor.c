@@ -476,11 +476,11 @@ int main(int argc, char *argv[])
 	bind(server_fd, (struct sockaddr *)&address, sizeof(address));
 	listen(server_fd, MAX_CLIENTS);
 
-	printf("Servidor escuchando en puerto %d...\n", port);
+	printf("Servidor escuchando en puerto %d\n", port);
 
 	while (1)
 	{
-		printf("Esperando conexiones...\n");
+		printf("Esperando conexiones\n");
 		new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
 		if (new_socket < 0)
 		{

@@ -45,10 +45,6 @@ void add_to_history(const char *message)
 
 void mostrar_mensajes()
 {
-    CLEAR_SCREEN();
-    printf("=== Chat: Usuario %s [Estado: %s] ===\n", username, estado);
-    printf("=== Comandos: /BROADCAST, /DM, /LISTA, /ESTADO, /MOSTRAR, /AYUDA, /EXIT ===\n\n");
-
     pthread_mutex_lock(&history_mutex);
     for (int i = 0; i < history_count; i++)
     {
