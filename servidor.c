@@ -7,29 +7,28 @@
 #include <json-c/json.h>
 
 #define MAX_CLIENTS 100
-#define ESTADO_LENGTH 10
+#define STATUS_LENGTH 10
 
 typedef struct
 {
 	int socket;
 	char username[50];
 	char ip_address[16];
-	char estado[ESTADO_LENGTH];
+	char estado[STATUS_LENGTH];
 	time_t last_activity;
 } Client;
 
 // Declaraciones de funciones (prototipos)
 void *handle_client(void *socket_desc);
-void handle_register(struct json_object *parsed_json, int sock);
-void handle_exit(struct json_object *parsed_json, int sock);
+void handle_register_client(struct json_object *parsed_json, int sock);
 void broadcast_message(const char *message, const char *emisor);
 void send_direct_message(const char *receiver, const char *message, const char *emisor);
 void list_connected_users(int socket);
-void handle_estado(struct json_object *parsed_json, int sock);
+void handle_status_change(struct json_object *parsed_json, int sock);
 void handle_mostrar(struct json_object *parsed_json, int sock);
-void remove_client(int socket);
+void remove_client_from_server(int socket);
 void send_json_response(int socket, const char *status, const char *key, const char *message);
-int registrar_nuevo_cliente(int socket, const char *username, const char *ip_address);
+int register_new_client(int socket, const char *username, const char *ip_address);
 
 Client *clients[MAX_CLIENTS];
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -41,7 +40,6 @@ void *handle_client(void *socket_desc)
 	char buffer[1024];
 	int read_size;
 
-	// Registro inicial
 	read_size = recv(sock, buffer, sizeof(buffer), 0);
 	if (read_size <= 0)
 	{
@@ -56,7 +54,7 @@ void *handle_client(void *socket_desc)
 	if (json_object_object_get_ex(parsed_json, "tipo", &tipo) &&
 		strcmp(json_object_get_string(tipo), "REGISTRO") == 0)
 	{
-		handle_register(parsed_json, sock);
+		handle_register_client(parsed_json, sock);
 	}
 	else
 	{
@@ -67,7 +65,6 @@ void *handle_client(void *socket_desc)
 	}
 	json_object_put(parsed_json);
 
-	// Procesar mensajes subsiguientes
 	while ((read_size = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0)
 	{
 		buffer[read_size] = '\0';
@@ -110,19 +107,15 @@ void *handle_client(void *socket_desc)
 			}
 			else if (strcmp(tipo_str, "REGISTRO") == 0)
 			{
-				handle_register(msg_json, sock);
+				handle_register_client(msg_json, sock);
 			}
 			else if (strcmp(tipo_str, "ESTADO") == 0)
 			{
-				handle_estado(msg_json, sock);
+				handle_status_change(msg_json, sock);
 			}
 			else if (strcmp(tipo_str, "MOSTRAR") == 0)
 			{
 				handle_mostrar(msg_json, sock);
-			}
-			else if (strcmp(tipo_str, "EXIT") == 0)
-			{
-				handle_exit(msg_json, sock);
 			}
 		}
 		else if (accion_str)
@@ -161,56 +154,39 @@ void *handle_client(void *socket_desc)
 		json_object_put(msg_json);
 	}
 
-	remove_client(sock);
-	printf("Cliente desconectado\n");
+	remove_client_from_server(sock);
+	printf("Cliente desconectado del servidor\n");
 	close(sock);
 	return NULL;
 }
 
 // Implementación de funciones auxiliares
-void handle_register(struct json_object *parsed_json, int sock)
+void handle_register_client(struct json_object *parsed_json, int sock)
 {
 	struct json_object *usuario;
 	if (json_object_object_get_ex(parsed_json, "usuario", &usuario))
 	{
 		const char *username = json_object_get_string(usuario);
 
-		// Obtener la dirección IP del cliente directamente
 		struct sockaddr_in peer_address;
 		socklen_t peer_address_len = sizeof(peer_address);
 		getpeername(sock, (struct sockaddr *)&peer_address, &peer_address_len);
 		char client_ip[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &peer_address.sin_addr, client_ip, INET_ADDRSTRLEN);
 
-		printf("Intentando registrar usuario: %s con IP: %s\n", username, client_ip);
-
-		if (registrar_nuevo_cliente(sock, username, client_ip))
+		if (register_new_client(sock, username, client_ip))
 		{
-			printf("Registro exitoso para %s, enviando respuesta al cliente...\n", username);
 			send_json_response(sock, "OK", "respuesta", "Registro exitoso");
 		}
 		else
 		{
-			printf("Registro fallido para %s, enviando error al cliente...\n", username);
 			send_json_response(sock, "ERROR", "razon", "Usuario/IP duplicado");
 		}
 	}
 	else
 	{
-		printf("Registro fallido, campos faltantes\n");
 		send_json_response(sock, "ERROR", "razon", "Campos faltantes");
 	}
-}
-
-void handle_exit(struct json_object *parsed_json, int sock)
-{
-	struct json_object *usuario;
-	if (json_object_object_get_ex(parsed_json, "usuario", &usuario))
-	{
-		printf("Usuario %s salió\n", json_object_get_string(usuario));
-		send_json_response(sock, "OK", "respuesta", "Desconexión exitosa");
-	}
-	remove_client(sock);
 }
 
 void broadcast_message(const char *message, const char *emisor)
@@ -308,7 +284,7 @@ void list_connected_users(int socket)
 	send(socket, buffer, strlen(buffer), 0);
 }
 
-void handle_estado(struct json_object *parsed_json, int sock)
+void handle_status_change(struct json_object *parsed_json, int sock)
 {
 	struct json_object *usuario, *estado;
 	if (json_object_object_get_ex(parsed_json, "usuario", &usuario) &&
@@ -329,7 +305,7 @@ void handle_estado(struct json_object *parsed_json, int sock)
 				}
 				else
 				{
-					strncpy(clients[i]->estado, new_estado, ESTADO_LENGTH);
+					strncpy(clients[i]->estado, new_estado, STATUS_LENGTH);
 					send_json_response(sock, "OK", "respuesta", "Estado actualizado");
 				}
 				pthread_mutex_unlock(&clients_mutex);
@@ -358,7 +334,6 @@ void handle_mostrar(struct json_object *parsed_json, int sock)
 			if (clients[i] != NULL && strcmp(clients[i]->username, user) == 0)
 			{
 				struct json_object *json_resp = json_object_new_object();
-				// Cambiar de MOSTRAR a INFO_USUARIO para que el cliente lo reconozca correctamente
 				json_object_object_add(json_resp, "tipo", json_object_new_string("INFO_USUARIO"));
 				json_object_object_add(json_resp, "usuario", json_object_new_string(user));
 				json_object_object_add(json_resp, "estado", json_object_new_string(clients[i]->estado));
@@ -381,7 +356,7 @@ void handle_mostrar(struct json_object *parsed_json, int sock)
 	}
 }
 
-void remove_client(int socket)
+void remove_client_from_server(int socket)
 {
 	pthread_mutex_lock(&clients_mutex);
 	for (int i = 0; i < MAX_CLIENTS; i++)
@@ -411,7 +386,7 @@ void send_json_response(int socket, const char *status, const char *key, const c
 	json_object_put(json_resp);
 }
 
-int registrar_nuevo_cliente(int socket, const char *username, const char *ip_address)
+int register_new_client(int socket, const char *username, const char *ip_address)
 {
 	pthread_mutex_lock(&clients_mutex);
 
@@ -437,7 +412,7 @@ int registrar_nuevo_cliente(int socket, const char *username, const char *ip_add
 			strncpy(clients[i]->username, username, sizeof(clients[i]->username));
 			strncpy(clients[i]->ip_address, ip_address, sizeof(clients[i]->ip_address));
 
-			strncpy(clients[i]->estado, "ACTIVO", ESTADO_LENGTH);
+			strncpy(clients[i]->estado, "ACTIVO", STATUS_LENGTH);
 			pthread_mutex_unlock(&clients_mutex);
 			return 1;
 		}
