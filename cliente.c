@@ -7,13 +7,14 @@
 #include <signal.h>
 #include <json-c/json.h>
 
-#define MAX_HISTORY 100
+#define MAX_MESSAGES 100
+#define CLEAR_SCREEN() printf("\033[H\033[J")
 
 int sock;
 char username[32];
 char estado[32] = "ACTIVO";
-char message_history[MAX_HISTORY][256];
-int history_count = 0;
+char messages_list[MAX_MESSAGES][256];
+int messages_count = 0;
 pthread_mutex_t history_mutex = PTHREAD_MUTEX_INITIALIZER;
 int running = 1;
 
@@ -21,31 +22,32 @@ void add_message_to_message_list(const char *message)
 {
     pthread_mutex_lock(&history_mutex);
 
-    if (history_count < MAX_HISTORY)
+    if (messages_count < MAX_MESSAGES)
     {
-        strncpy(message_history[history_count], message, 255);
-        message_history[history_count][255] = '\0';
-        history_count++;
+        strncpy(messages_list[messages_count], message, 255);
+        messages_list[messages_count][255] = '\0';
+        messages_count++;
     }
     else
     {
-        for (int i = 0; i < MAX_HISTORY - 1; i++)
+        for (int i = 0; i < MAX_MESSAGES - 1; i++)
         {
-            strcpy(message_history[i], message_history[i + 1]);
+            strcpy(messages_list[i], messages_list[i + 1]);
         }
-        strncpy(message_history[MAX_HISTORY - 1], message, 255);
-        message_history[MAX_HISTORY - 1][255] = '\0';
+        strncpy(messages_list[MAX_MESSAGES - 1], message, 255);
+        messages_list[MAX_MESSAGES - 1][255] = '\0';
     }
 
     pthread_mutex_unlock(&history_mutex);
 }
 
-void mostrar_mensajes()
+void show_all_messages()
 {
+    CLEAR_SCREEN();
     pthread_mutex_lock(&history_mutex);
-    for (int i = 0; i < history_count; i++)
+    for (int i = 0; i < messages_count; i++)
     {
-        printf("%s\n", message_history[i]);
+        printf("%s\n", messages_list[i]);
     }
     pthread_mutex_unlock(&history_mutex);
 
@@ -87,7 +89,7 @@ void handle_special_commads(char *message, const char *username, const char *ser
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "[%s] (BROADCAST): %s", username, mensaje);
             add_message_to_message_list(history_msg);
-            mostrar_mensajes();
+            show_all_messages();
         }
         else if (strncmp(message, "/DM", 3) == 0)
         {
@@ -109,7 +111,7 @@ void handle_special_commads(char *message, const char *username, const char *ser
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "PRIVADO A [%s]: %s", destinatario, mensaje);
             add_message_to_message_list(history_msg);
-            mostrar_mensajes();
+            show_all_messages();
         }
         else if (strncmp(message, "/LISTA", 6) == 0)
         {
@@ -132,7 +134,7 @@ void handle_special_commads(char *message, const char *username, const char *ser
                 strcmp(nuevo_estado, "INACTIVO") != 0)
             {
                 add_message_to_message_list("ERROR: Solo puedes usar los estados: ACTIVO, OCUPADO o INACTIVO.");
-                mostrar_mensajes();
+                show_all_messages();
                 return;
             }
 
@@ -149,7 +151,7 @@ void handle_special_commads(char *message, const char *username, const char *ser
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "Tu estado ha cambiado a: %s", nuevo_estado);
             add_message_to_message_list(history_msg);
-            mostrar_mensajes();
+            show_all_messages();
         }
         else if (strncmp(message, "/MOSTRAR", 8) == 0)
         {
@@ -160,6 +162,7 @@ void handle_special_commads(char *message, const char *username, const char *ser
             json_object_object_add(json_msg, "tipo", json_object_new_string("MOSTRAR"));
             json_object_object_add(json_msg, "usuario", json_object_new_string(usuario_buscado));
             json_str = json_object_to_json_string(json_msg);
+
             send_json(json_str);
             json_object_put(json_msg);
         }
@@ -179,7 +182,7 @@ void handle_special_commads(char *message, const char *username, const char *ser
         char history_msg[256];
         snprintf(history_msg, sizeof(history_msg), "[%s]: %s", username, message);
         add_message_to_message_list(history_msg);
-        mostrar_mensajes();
+        show_all_messages();
     }
 }
 
@@ -216,7 +219,7 @@ void *receive_thread(void *arg)
                     char history_msg[256];
                     snprintf(history_msg, sizeof(history_msg), "Error: %s", json_object_get_string(razon));
                     add_message_to_message_list(history_msg);
-                    mostrar_mensajes();
+                    show_all_messages();
                 }
             }
         }
@@ -249,7 +252,7 @@ void *receive_thread(void *arg)
                             add_message_to_message_list(history_msg);
                         }
                     }
-                    mostrar_mensajes();
+                    show_all_messages();
                 }
             }
             else if (strcmp(tipo_str, "INFO_USUARIO") == 0)
@@ -268,7 +271,7 @@ void *receive_thread(void *arg)
                     add_message_to_message_list(history_msg);
                     snprintf(history_msg, sizeof(history_msg), "IP: %s", json_object_get_string(direccionIP));
                     add_message_to_message_list(history_msg);
-                    mostrar_mensajes();
+                    show_all_messages();
                 }
             }
         }
@@ -294,7 +297,7 @@ void *receive_thread(void *arg)
                         char history_msg[256];
                         snprintf(history_msg, sizeof(history_msg), "[%s]: %s", emisor_str, mensaje_str);
                         add_message_to_message_list(history_msg);
-                        mostrar_mensajes();
+                        show_all_messages();
                     }
                 }
             }
@@ -311,7 +314,7 @@ void *receive_thread(void *arg)
                     char history_msg[256];
                     snprintf(history_msg, sizeof(history_msg), "PRIVADO DE [%s]: %s", emisor_str, mensaje_str);
                     add_message_to_message_list(history_msg);
-                    mostrar_mensajes();
+                    show_all_messages();
                 }
             }
         }
