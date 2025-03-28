@@ -488,7 +488,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Mostrar pantalla inicial
     CLEAR_SCREEN();
     printf("=== Chat: Usuario %s [Estado: %s] ===\n", username, estado);
     printf("=== Comandos: /BROADCAST, /DM, /LISTA, /ESTADO, /MOSTRAR, /AYUDA, /EXIT ===\n\n");
