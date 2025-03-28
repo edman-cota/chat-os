@@ -121,7 +121,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
             // Agregar a la historia
             char history_msg[256];
-            snprintf(history_msg, sizeof(history_msg), "Tú -> %s: %s", destinatario, mensaje);
+            snprintf(history_msg, sizeof(history_msg), "PRIVADO A [%s]: %s", destinatario, mensaje);
             add_message_to_message_list(history_msg);
             mostrar_mensajes();
         }
