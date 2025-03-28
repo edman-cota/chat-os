@@ -107,7 +107,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
             // Agregar a la historia
             char history_msg[256];
-            sprintf(history_msg, "Tú (broadcast): %s", mensaje);
+            snprintf(history_msg, sizeof(history_msg), "Tú (broadcast): %s", mensaje);
             add_to_history(history_msg);
             display_history();
         }
@@ -129,7 +129,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
             // Agregar a la historia
             char history_msg[256];
-            snprintf(history_msg, "Tú -> %s: %s", destinatario, mensaje);
+            snprintf(history_msg, sizeof(history_msg), "Tú -> %s: %s", destinatario, mensaje);
             add_to_history(history_msg);
             display_history();
         }
@@ -173,7 +173,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
             // Agregar a la historia
             char history_msg[256];
-            snprintf(history_msg, "Tu estado ha cambiado a: %s", nuevo_estado);
+            snprintf(history_msg, sizeof(history_msg), "Tu estado ha cambiado a: %s", nuevo_estado);
             add_to_history(history_msg);
             display_history();
         }
@@ -209,7 +209,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
         {
             // Comando desconocido
             char history_msg[256];
-            sprintf(history_msg, "Comando desconocido: %s. Use /AYUDA para ver los comandos disponibles.", message);
+            snprintf(history_msg, sizeof(history_msg), "Comando desconocido: %s. Use /AYUDA para ver los comandos disponibles.", message);
             add_to_history(history_msg);
             display_history();
         }
@@ -228,7 +228,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
         // Agregar a la historia
         char history_msg[256];
-        snprintf(history_msg, "Tú (broadcast): %s", message);
+        snprintf(history_msg, sizeof(history_msg), "Tú (broadcast): %s", message);
         add_to_history(history_msg);
         display_history();
     }
@@ -265,7 +265,7 @@ void *receive_thread(void *arg)
                 if (json_object_object_get_ex(parsed_json, "razon", &razon))
                 {
                     char history_msg[256];
-                    snprintf(history_msg, "Error: %s", json_object_get_string(razon));
+                    snprintf(history_msg, sizeof(history_msg), "Error: %s", json_object_get_string(razon));
                     add_to_history(history_msg);
                     display_history();
                 }
@@ -296,7 +296,7 @@ void *receive_thread(void *arg)
                             estado_str = json_object_get_string(estado_usr);
 
                             char history_msg[256];
-                            sprintf(history_msg, "%s [%s]", nombre_str, estado_str);
+                            snprintf(history_msg, sizeof(history_msg), "%s [%s]", nombre_str, estado_str);
                             add_to_history(history_msg);
                         }
                     }
@@ -314,11 +314,11 @@ void *receive_thread(void *arg)
 
                     add_to_history("=== INFORMACIÓN DE USUARIO ===");
                     char history_msg[256];
-                    sprintf(history_msg, "Usuario: %s", json_object_get_string(usuario));
+                    snprintf(history_msg, sizeof(history_msg), "Usuario: %s", json_object_get_string(usuario));
                     add_to_history(history_msg);
-                    sprintf(history_msg, "Estado: %s", json_object_get_string(estado_usr));
+                    snprintf(history_msg, sizeof(history_msg), "Estado: %s", json_object_get_string(estado_usr));
                     add_to_history(history_msg);
-                    sprintf(history_msg, "IP: %s", json_object_get_string(direccionIP));
+                    snprintf(history_msg, sizeof(history_msg), "IP: %s", json_object_get_string(direccionIP));
                     add_to_history(history_msg);
                     add_to_history("============================");
                     display_history();
@@ -345,7 +345,7 @@ void *receive_thread(void *arg)
                     if (strcmp(emisor_str, username) != 0)
                     {
                         char history_msg[256];
-                        sprintf(history_msg, "%s (broadcast): %s", emisor_str, mensaje_str);
+                        snprintf(history_msg, sizeof(history_msg), "%s (broadcast): %s", emisor_str, mensaje_str);
                         add_to_history(history_msg);
                         display_history();
                     }
@@ -362,7 +362,7 @@ void *receive_thread(void *arg)
                     const char *mensaje_str = json_object_get_string(mensaje);
 
                     char history_msg[256];
-                    sprintf(history_msg, "%s -> Tú: %s", emisor_str, mensaje_str);
+                    snprintf(history_msg, sizeof(history_msg), "%s -> Tú: %s", emisor_str, mensaje_str);
                     add_to_history(history_msg);
                     display_history();
                 }
