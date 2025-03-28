@@ -9,6 +9,11 @@ Windows
 gcc servidor.c -o servidor.exe -lws2_32 -lpthread
 gcc cliente.c -o cliente.exe -lws2_32 -lpthread
 
+gcc servidor.c -o servidor.exe ^
+-I"C:\msys64\mingw64\include" ^
+-L"C:\msys64\mingw64\lib" ^
+-ljson-c -lws2_32 -static
+
 Iniciar el servidor:
 
 Linux:
