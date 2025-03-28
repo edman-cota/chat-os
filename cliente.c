@@ -386,7 +386,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    printf("Conectado al servidor %s:%d\n", server_ip, port);
+    printf("Conectado al servidor como: %s\n", username);
 
     struct json_object *json_register = json_object_new_object();
     json_object_object_add(json_register, "tipo", json_object_new_string("REGISTRO"));
