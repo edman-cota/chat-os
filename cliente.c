@@ -19,7 +19,7 @@ int history_count = 0;
 pthread_mutex_t history_mutex = PTHREAD_MUTEX_INITIALIZER;
 int running = 1;
 
-void add_to_history(const char *message)
+void add_message_to_message_list(const char *message)
 {
     pthread_mutex_lock(&history_mutex);
 
@@ -31,7 +31,6 @@ void add_to_history(const char *message)
     }
     else
     {
-        // Shift history to make room
         for (int i = 0; i < MAX_HISTORY - 1; i++)
         {
             strcpy(message_history[i], message_history[i + 1]);
@@ -101,7 +100,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "[%s] (BROADCAST): %s", username, mensaje);
-            add_to_history(history_msg);
+            add_message_to_message_list(history_msg);
             mostrar_mensajes();
         }
         else if (strncmp(message, "/DM", 3) == 0)
@@ -123,7 +122,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             // Agregar a la historia
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "Tú -> %s: %s", destinatario, mensaje);
-            add_to_history(history_msg);
+            add_message_to_message_list(history_msg);
             mostrar_mensajes();
         }
         else if (strncmp(message, "/LISTA", 6) == 0)
@@ -146,7 +145,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
                 strcmp(nuevo_estado, "OCUPADO") != 0 &&
                 strcmp(nuevo_estado, "INACTIVO") != 0)
             {
-                add_to_history("ERROR: Solo puedes usar los estados: ACTIVO, OCUPADO o INACTIVO.");
+                add_message_to_message_list("ERROR: Solo puedes usar los estados: ACTIVO, OCUPADO o INACTIVO.");
                 mostrar_mensajes();
                 return;
             }
@@ -163,7 +162,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "Tu estado ha cambiado a: %s", nuevo_estado);
-            add_to_history(history_msg);
+            add_message_to_message_list(history_msg);
             mostrar_mensajes();
         }
         else if (strncmp(message, "/MOSTRAR", 8) == 0)
@@ -192,7 +191,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
 
         char history_msg[256];
         snprintf(history_msg, sizeof(history_msg), "[%s]: %s", username, message);
-        add_to_history(history_msg);
+        add_message_to_message_list(history_msg);
         mostrar_mensajes();
     }
 }
@@ -229,7 +228,7 @@ void *receive_thread(void *arg)
                 {
                     char history_msg[256];
                     snprintf(history_msg, sizeof(history_msg), "Error: %s", json_object_get_string(razon));
-                    add_to_history(history_msg);
+                    add_message_to_message_list(history_msg);
                     mostrar_mensajes();
                 }
             }
@@ -245,7 +244,7 @@ void *receive_thread(void *arg)
                 if (json_object_object_get_ex(parsed_json, "usuarios", &usuarios))
                 {
                     int num_usuarios = json_object_array_length(usuarios);
-                    add_to_history("=== USUARIOS CONECTADOS ===");
+                    add_message_to_message_list("Usuarios conectados:");
                     for (int i = 0; i < num_usuarios; i++)
                     {
                         struct json_object *usuario_obj = json_object_array_get_idx(usuarios, i);
@@ -260,10 +259,9 @@ void *receive_thread(void *arg)
 
                             char history_msg[256];
                             snprintf(history_msg, sizeof(history_msg), "%s [%s]", nombre_str, estado_str);
-                            add_to_history(history_msg);
+                            add_message_to_message_list(history_msg);
                         }
                     }
-                    add_to_history("==========================");
                     mostrar_mensajes();
                 }
             }
@@ -275,15 +273,14 @@ void *receive_thread(void *arg)
                     json_object_object_get_ex(parsed_json, "direccionIP", &direccionIP))
                 {
 
-                    add_to_history("=== INFORMACIÓN DE USUARIO ===");
+                    add_message_to_message_list("Información de un usuario: ");
                     char history_msg[256];
                     snprintf(history_msg, sizeof(history_msg), "Usuario: %s", json_object_get_string(usuario));
-                    add_to_history(history_msg);
+                    add_message_to_message_list(history_msg);
                     snprintf(history_msg, sizeof(history_msg), "Estado: %s", json_object_get_string(estado_usr));
-                    add_to_history(history_msg);
+                    add_message_to_message_list(history_msg);
                     snprintf(history_msg, sizeof(history_msg), "IP: %s", json_object_get_string(direccionIP));
-                    add_to_history(history_msg);
-                    add_to_history("============================");
+                    add_message_to_message_list(history_msg);
                     mostrar_mensajes();
                 }
             }
@@ -309,7 +306,7 @@ void *receive_thread(void *arg)
                     {
                         char history_msg[256];
                         snprintf(history_msg, sizeof(history_msg), "%s (broadcast): %s", emisor_str, mensaje_str);
-                        add_to_history(history_msg);
+                        add_message_to_message_list(history_msg);
                         mostrar_mensajes();
                     }
                 }
@@ -325,8 +322,8 @@ void *receive_thread(void *arg)
                     const char *mensaje_str = json_object_get_string(mensaje);
 
                     char history_msg[256];
-                    snprintf(history_msg, sizeof(history_msg), "%s -> Tú: %s", emisor_str, mensaje_str);
-                    add_to_history(history_msg);
+                    snprintf(history_msg, sizeof(history_msg), "PRIVADO DE [%s]: %s", emisor_str, mensaje_str);
+                    add_message_to_message_list(history_msg);
                     mostrar_mensajes();
                 }
             }
@@ -337,7 +334,7 @@ void *receive_thread(void *arg)
 
     if (read_size == 0)
     {
-        add_to_history("Servidor desconectado.");
+        add_message_to_message_list("Servidor desconectado.");
     }
     else if (read_size == -1)
     {
