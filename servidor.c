@@ -5,9 +5,7 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <json-c/json.h>
-// #include "server_utils.h"
 
-#define PORT 50213
 #define MAX_CLIENTS 100
 #define ESTADO_LENGTH 10
 
@@ -448,21 +446,37 @@ int registrar_nuevo_cliente(int socket, const char *username, const char *ip_add
 	return 0;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	int server_fd, new_socket;
 	struct sockaddr_in address;
 	socklen_t addrlen = sizeof(address);
+	int port;
+
+	// Verificar argumentos
+	if (argc != 2)
+	{
+		printf("Uso: %s <puerto>\n", argv[0]);
+		return 1;
+	}
+
+	// Convertir el puerto a entero
+	port = atoi(argv[1]);
+	if (port <= 0 || port > 65535)
+	{
+		printf("Puerto inválido. Debe ser un número entre 1 y 65535\n");
+		return 1;
+	}
 
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons(PORT);
+	address.sin_port = htons(port);
 
 	bind(server_fd, (struct sockaddr *)&address, sizeof(address));
 	listen(server_fd, MAX_CLIENTS);
 
-	printf("Servidor escuchando en puerto %d...\n", PORT);
+	printf("Servidor escuchando en puerto %d...\n", port);
 
 	while (1)
 	{

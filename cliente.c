@@ -43,7 +43,7 @@ void add_to_history(const char *message)
     pthread_mutex_unlock(&history_mutex);
 }
 
-void display_history()
+void mostrar_mensajes()
 {
     CLEAR_SCREEN();
     printf("=== Chat: Usuario %s [Estado: %s] ===\n", username, estado);
@@ -106,7 +106,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "[%s] (BROADCAST): %s", username, mensaje);
             add_to_history(history_msg);
-            display_history();
+            mostrar_mensajes();
         }
         else if (strncmp(message, "/DM", 3) == 0)
         {
@@ -128,7 +128,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "Tú -> %s: %s", destinatario, mensaje);
             add_to_history(history_msg);
-            display_history();
+            mostrar_mensajes();
         }
         else if (strncmp(message, "/LISTA", 6) == 0)
         {
@@ -151,7 +151,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
                 strcmp(nuevo_estado, "INACTIVO") != 0)
             {
                 add_to_history("ERROR: Solo puedes usar los estados: ACTIVO, OCUPADO o INACTIVO.");
-                display_history();
+                mostrar_mensajes();
                 return;
             }
 
@@ -168,7 +168,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "Tu estado ha cambiado a: %s", nuevo_estado);
             add_to_history(history_msg);
-            display_history();
+            mostrar_mensajes();
         }
         else if (strncmp(message, "/MOSTRAR", 8) == 0)
         {
@@ -197,7 +197,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
         char history_msg[256];
         snprintf(history_msg, sizeof(history_msg), "[%s]: %s", username, message);
         add_to_history(history_msg);
-        display_history();
+        mostrar_mensajes();
     }
 }
 
@@ -234,7 +234,7 @@ void *receive_thread(void *arg)
                     char history_msg[256];
                     snprintf(history_msg, sizeof(history_msg), "Error: %s", json_object_get_string(razon));
                     add_to_history(history_msg);
-                    display_history();
+                    mostrar_mensajes();
                 }
             }
         }
@@ -268,7 +268,7 @@ void *receive_thread(void *arg)
                         }
                     }
                     add_to_history("==========================");
-                    display_history();
+                    mostrar_mensajes();
                 }
             }
             else if (strcmp(tipo_str, "INFO_USUARIO") == 0)
@@ -288,7 +288,7 @@ void *receive_thread(void *arg)
                     snprintf(history_msg, sizeof(history_msg), "IP: %s", json_object_get_string(direccionIP));
                     add_to_history(history_msg);
                     add_to_history("============================");
-                    display_history();
+                    mostrar_mensajes();
                 }
             }
         }
@@ -314,7 +314,7 @@ void *receive_thread(void *arg)
                         char history_msg[256];
                         snprintf(history_msg, sizeof(history_msg), "%s (broadcast): %s", emisor_str, mensaje_str);
                         add_to_history(history_msg);
-                        display_history();
+                        mostrar_mensajes();
                     }
                 }
             }
@@ -331,7 +331,7 @@ void *receive_thread(void *arg)
                     char history_msg[256];
                     snprintf(history_msg, sizeof(history_msg), "%s -> Tú: %s", emisor_str, mensaje_str);
                     add_to_history(history_msg);
-                    display_history();
+                    mostrar_mensajes();
                 }
             }
         }
