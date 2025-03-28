@@ -31,7 +31,7 @@ void handle_estado(struct json_object *parsed_json, int sock);
 void handle_mostrar(struct json_object *parsed_json, int sock);
 void remove_client(int socket);
 void send_json_response(int socket, const char *status, const char *key, const char *message);
-int register_client(int socket, const char *username, const char *ip_address);
+int registrar_nuevo_cliente(int socket, const char *username, const char *ip_address);
 
 Client *clients[MAX_CLIENTS];
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -186,7 +186,7 @@ void handle_register(struct json_object *parsed_json, int sock)
 
 		printf("Intentando registrar usuario: %s con IP: %s\n", username, client_ip);
 
-		if (register_client(sock, username, client_ip))
+		if (registrar_nuevo_cliente(sock, username, client_ip))
 		{
 			printf("Registro exitoso para %s, enviando respuesta al cliente...\n", username);
 			send_json_response(sock, "OK", "respuesta", "Registro exitoso");
@@ -413,20 +413,22 @@ void send_json_response(int socket, const char *status, const char *key, const c
 	json_object_put(json_resp);
 }
 
-int register_client(int socket, const char *username, const char *ip_address)
+int registrar_nuevo_cliente(int socket, const char *username, const char *ip_address)
 {
 	pthread_mutex_lock(&clients_mutex);
-	// Verificar duplicados
+
+	// Verificamos que el nuevo cliente no sea duplicado si
+	// Si no es NULL
+	// Si el cliente nuevo no tiene el mismo nombre de usuario.
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
-		if (clients[i] != NULL &&
-			(strcmp(clients[i]->username, username) == 0 ||
-			 strcmp(clients[i]->ip_address, ip_address) == 0))
+		if (clients[i] != NULL && strcmp(clients[i]->username, username) == 0)
 		{
 			pthread_mutex_unlock(&clients_mutex);
 			return 0;
 		}
 	}
+
 	// Registrar nuevo cliente
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
