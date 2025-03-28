@@ -32,7 +32,19 @@ En terminal 3:
 ## Enviar un mensaje privado
 
 Esquema:
-/msg <usuario> <mensaje>
+/DM <usuario> <mensaje>
 
 Ejemplo:
-/msg usuario2 Hola, este es un mensaje privado
+/DM Edman Hola, este es un mensaje privado
+
+## Listar los usuarios conectados
+
+/LISTA
+
+## Cambiar de estado (ACTIVO, OCUPADO, INACTIVO)
+
+/ESTADO <estado>
+
+## Mostrar un usuario en especifico
+
+/MOSTRAR <usuario>

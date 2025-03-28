@@ -438,7 +438,7 @@ int registrar_nuevo_cliente(int socket, const char *username, const char *ip_add
 			clients[i]->socket = socket;
 			strncpy(clients[i]->username, username, sizeof(clients[i]->username));
 			strncpy(clients[i]->ip_address, ip_address, sizeof(clients[i]->ip_address));
-			// Inicializar estado como ACTIVO
+
 			strncpy(clients[i]->estado, "ACTIVO", ESTADO_LENGTH);
 			pthread_mutex_unlock(&clients_mutex);
 			return 1;

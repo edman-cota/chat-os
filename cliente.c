@@ -92,11 +92,9 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
         }
         else if (strncmp(message, "/BROADCAST", 10) == 0)
         {
-            // Comando de broadcast
             char mensaje[256];
             snprintf(mensaje, sizeof(mensaje), "%s", message + 11); // Obtener el mensaje después del comando
 
-            // Crear JSON para BROADCAST
             json_msg = json_object_new_object();
             json_object_object_add(json_msg, "accion", json_object_new_string("BROADCAST"));
             json_object_object_add(json_msg, "nombre_emisor", json_object_new_string(username));
@@ -105,9 +103,8 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             enviar_json(json_str);
             json_object_put(json_msg);
 
-            // Agregar a la historia
             char history_msg[256];
-            snprintf(history_msg, sizeof(history_msg), "Tú (broadcast): %s", mensaje);
+            snprintf(history_msg, sizeof(history_msg), "[%s] (BROADCAST): %s", username, mensaje);
             add_to_history(history_msg);
             display_history();
         }
@@ -149,17 +146,15 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             char nuevo_estado[32];
             sscanf(message + 8, "%s", nuevo_estado);
 
-            // Validar el estado
             if (strcmp(nuevo_estado, "ACTIVO") != 0 &&
                 strcmp(nuevo_estado, "OCUPADO") != 0 &&
                 strcmp(nuevo_estado, "INACTIVO") != 0)
             {
-                add_to_history("Error: Estado inválido. Use ACTIVO, OCUPADO o INACTIVO.");
+                add_to_history("ERROR: Solo puedes usar los estados: ACTIVO, OCUPADO o INACTIVO.");
                 display_history();
                 return;
             }
 
-            // Crear JSON para ESTADO
             json_msg = json_object_new_object();
             json_object_object_add(json_msg, "tipo", json_object_new_string("ESTADO"));
             json_object_object_add(json_msg, "usuario", json_object_new_string(username));
@@ -168,10 +163,8 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             enviar_json(json_str);
             json_object_put(json_msg);
 
-            // Actualizar estado local después de confirmación del servidor
             strcpy(estado, nuevo_estado);
 
-            // Agregar a la historia
             char history_msg[256];
             snprintf(history_msg, sizeof(history_msg), "Tu estado ha cambiado a: %s", nuevo_estado);
             add_to_history(history_msg);
@@ -179,11 +172,9 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
         }
         else if (strncmp(message, "/MOSTRAR", 8) == 0)
         {
-            // Comando para mostrar información de un usuario
             char usuario_buscado[256];
             sscanf(message + 9, "%s", usuario_buscado);
 
-            // Crear JSON para MOSTRAR
             json_msg = json_object_new_object();
             json_object_object_add(json_msg, "tipo", json_object_new_string("MOSTRAR"));
             json_object_object_add(json_msg, "usuario", json_object_new_string(usuario_buscado));
@@ -191,33 +182,10 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             enviar_json(json_str);
             json_object_put(json_msg);
         }
-        else if (strncmp(message, "/AYUDA", 6) == 0)
-        {
-            // Comando de ayuda, muestra información sobre los comandos disponibles
-            add_to_history("=== AYUDA DEL CHAT ===");
-            add_to_history("/BROADCAST <mensaje> - Envía un mensaje a todos los usuarios conectados");
-            add_to_history("/DM <usuario> <mensaje> - Envía un mensaje privado a un usuario específico");
-            add_to_history("/LISTA - Muestra la lista de usuarios conectados al chat");
-            add_to_history("/ESTADO <estado> - Cambia tu estado (ACTIVO, OCUPADO, INACTIVO)");
-            add_to_history("/MOSTRAR <usuario> - Muestra información sobre un usuario específico");
-            add_to_history("/AYUDA - Muestra esta ayuda");
-            add_to_history("/EXIT - Salir del chat");
-            add_to_history("=====================");
-            display_history();
-        }
-        else
-        {
-            // Comando desconocido
-            char history_msg[256];
-            snprintf(history_msg, sizeof(history_msg), "Comando desconocido: %s. Use /AYUDA para ver los comandos disponibles.", message);
-            add_to_history(history_msg);
-            display_history();
-        }
     }
     else
     {
-        // Si no es un comando, tratarlo como un mensaje de broadcast
-        // Crear JSON para BROADCAST
+
         json_msg = json_object_new_object();
         json_object_object_add(json_msg, "accion", json_object_new_string("BROADCAST"));
         json_object_object_add(json_msg, "nombre_emisor", json_object_new_string(username));
@@ -226,9 +194,8 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
         enviar_json(json_str);
         json_object_put(json_msg);
 
-        // Agregar a la historia
         char history_msg[256];
-        snprintf(history_msg, sizeof(history_msg), "Tú (broadcast): %s", message);
+        snprintf(history_msg, sizeof(history_msg), "[%s]: %s", username, message);
         add_to_history(history_msg);
         display_history();
     }
@@ -402,7 +369,6 @@ int main(int argc, char *argv[])
     char *server_ip = argv[2];
     int port = atoi(argv[3]);
 
-    // Crear socket TCP
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1)
     {
@@ -414,7 +380,6 @@ int main(int argc, char *argv[])
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
 
-    // Conectar al servidor
     if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
         perror("Error de conexión");
@@ -423,13 +388,10 @@ int main(int argc, char *argv[])
 
     printf("Conectado al servidor %s:%d\n", server_ip, port);
 
-    // Registro de usuario
     struct json_object *json_register = json_object_new_object();
     json_object_object_add(json_register, "tipo", json_object_new_string("REGISTRO"));
     json_object_object_add(json_register, "usuario", json_object_new_string(username));
-    // json_object_object_add(json_register, "direccionIP", json_object_new_string(server_ip));
 
-    // Obtener la dirección IP del cliente
     struct sockaddr_in local_address;
     socklen_t address_length = sizeof(local_address);
     if (getsockname(sock, (struct sockaddr *)&local_address, &address_length) == 0)
@@ -481,23 +443,16 @@ int main(int argc, char *argv[])
 
     json_object_put(response);
 
-    // Iniciar thread para recepción
     if (pthread_create(&recv_thread, NULL, receive_thread, NULL) < 0)
     {
         perror("Error al crear thread de recepción");
         return 1;
     }
 
-    CLEAR_SCREEN();
-    printf("=== Chat: Usuario %s [Estado: %s] ===\n", username, estado);
-    printf("=== Comandos: /BROADCAST, /DM, /LISTA, /ESTADO, /MOSTRAR, /AYUDA, /EXIT ===\n\n");
-    printf("\n> ");
-
-    // Loop principal
     while (running)
     {
         fgets(message, sizeof(message), stdin);
-        message[strcspn(message, "\n")] = 0; // Quitar el \n del final
+        message[strcspn(message, "\n")] = 0;
 
         if (strlen(message) > 0)
         {
@@ -505,10 +460,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Cerrar socket
     close(sock);
 
-    // Esperar a que termine el thread
     pthread_join(recv_thread, NULL);
 
     return 0;
