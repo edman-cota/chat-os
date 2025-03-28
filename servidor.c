@@ -20,6 +20,19 @@ typedef struct
 	time_t last_activity;
 } Client;
 
+// Declaraciones de funciones (prototipos)
+void *handle_client(void *socket_desc);
+void handle_register(struct json_object *parsed_json, int sock);
+void handle_exit(struct json_object *parsed_json, int sock);
+void broadcast_message(const char *message, const char *emisor);
+void send_direct_message(const char *receiver, const char *message, const char *emisor);
+void list_connected_users(int socket);
+void handle_estado(struct json_object *parsed_json, int sock);
+void handle_mostrar(struct json_object *parsed_json, int sock);
+void remove_client(int socket);
+void send_json_response(int socket, const char *status, const char *key, const char *message);
+int register_client(int socket, const char *username, const char *ip_address);
+
 Client *clients[MAX_CLIENTS];
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
