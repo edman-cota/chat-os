@@ -1,7 +1,13 @@
 #ifdef _WIN32
+#ifndef INET_ADDRSTRLEN
+#define INET_ADDRSTRLEN 16
+#endif
+
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
+#include <ws2tcpip.h>
+#define socklen_t int
 #define close(sock) closesocket(sock)
 #define CLEAR_SCREEN() system("cls")
 typedef SOCKET socket_t;
@@ -170,7 +176,7 @@ void *handle_client(void *socket_desc)
 	return NULL;
 }
 
-handle_register_client(struct json_object *parsed_json, int sock)
+handle_register_client(struct json_object *parsed_json, socket_t sock)
 {
 	struct json_object *usuario;
 	if (json_object_object_get_ex(parsed_json, "usuario", &usuario))
