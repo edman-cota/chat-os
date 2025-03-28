@@ -160,8 +160,7 @@ void *handle_client(void *socket_desc)
 	return NULL;
 }
 
-// Implementación de funciones auxiliares
-void handle_register_client(struct json_object *parsed_json, int sock)
+handle_register_client(struct json_object *parsed_json, int sock)
 {
 	struct json_object *usuario;
 	if (json_object_object_get_ex(parsed_json, "usuario", &usuario))
