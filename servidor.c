@@ -8,6 +8,17 @@
 // #include "server_utils.h"
 
 #define PORT 50213
+#define MAX_CLIENTS 100
+#define ESTADO_LENGTH 10
+
+typedef struct
+{
+	int socket;
+	char username[50];
+	char ip_address[16];
+	char estado[ESTADO_LENGTH];
+	time_t last_activity;
+} Client;
 
 Client *clients[MAX_CLIENTS];
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
