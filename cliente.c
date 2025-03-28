@@ -7,8 +7,6 @@
 #include <signal.h>
 #include <json-c/json.h>
 
-#define PORT 50213
-#define CLEAR_SCREEN() printf("\033[H\033[J")
 #define MAX_HISTORY 100
 
 int sock;
@@ -55,37 +53,25 @@ void mostrar_mensajes()
     fflush(stdout);
 }
 
-void enviar_json(const char *json_str)
+void send_json(const char *json_str)
 {
-    // Mostrar el JSON que se va a enviar
-    printf("Enviando: %s\n", json_str);
+    int send_status = send(sock, json_str, strlen(json_str), 0);
 
-    if (send(sock, json_str, strlen(json_str), 0) < 0)
+    if (send_status < 0)
     {
-        perror("Error al enviar mensaje");
+        perror("Error al enviar el mensaje como json");
     }
 }
 
-void manejar_comando(char *message, const char *username, const char *server_ip)
+void handle_special_commads(char *message, const char *username, const char *server_ip)
 {
     struct json_object *json_msg;
     const char *json_str;
 
-    // Verificar si el mensaje comienza con "/"
+    // Verificar si son comandos con / o es un mensaje normal
     if (message[0] == '/')
     {
-        if (strncmp(message, "/EXIT", 5) == 0)
-        {
-            json_msg = json_object_new_object();
-            json_object_object_add(json_msg, "tipo", json_object_new_string("EXIT"));
-            json_object_object_add(json_msg, "usuario", json_object_new_string(username));
-            json_object_object_add(json_msg, "estado", json_object_new_string(""));
-            json_str = json_object_to_json_string(json_msg);
-            enviar_json(json_str);
-            json_object_put(json_msg);
-            running = 0;
-        }
-        else if (strncmp(message, "/BROADCAST", 10) == 0)
+        if (strncmp(message, "/BROADCAST", 10) == 0)
         {
             char mensaje[256];
             snprintf(mensaje, sizeof(mensaje), "%s", message + 11); // Obtener el mensaje después del comando
@@ -95,7 +81,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             json_object_object_add(json_msg, "nombre_emisor", json_object_new_string(username));
             json_object_object_add(json_msg, "mensaje", json_object_new_string(mensaje));
             json_str = json_object_to_json_string(json_msg);
-            enviar_json(json_str);
+            send_json(json_str);
             json_object_put(json_msg);
 
             char history_msg[256];
@@ -116,7 +102,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             json_object_object_add(json_msg, "nombre_destinatario", json_object_new_string(destinatario));
             json_object_object_add(json_msg, "mensaje", json_object_new_string(mensaje));
             json_str = json_object_to_json_string(json_msg);
-            enviar_json(json_str);
+            send_json(json_str);
             json_object_put(json_msg);
 
             // Agregar a la historia
@@ -132,7 +118,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             json_object_object_add(json_msg, "accion", json_object_new_string("LISTA"));
             json_object_object_add(json_msg, "nombre_usuario", json_object_new_string(username));
             json_str = json_object_to_json_string(json_msg);
-            enviar_json(json_str);
+            send_json(json_str);
             json_object_put(json_msg);
         }
         else if (strncmp(message, "/ESTADO", 7) == 0)
@@ -155,7 +141,7 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             json_object_object_add(json_msg, "usuario", json_object_new_string(username));
             json_object_object_add(json_msg, "estado", json_object_new_string(nuevo_estado));
             json_str = json_object_to_json_string(json_msg);
-            enviar_json(json_str);
+            send_json(json_str);
             json_object_put(json_msg);
 
             strcpy(estado, nuevo_estado);
@@ -174,19 +160,20 @@ void manejar_comando(char *message, const char *username, const char *server_ip)
             json_object_object_add(json_msg, "tipo", json_object_new_string("MOSTRAR"));
             json_object_object_add(json_msg, "usuario", json_object_new_string(usuario_buscado));
             json_str = json_object_to_json_string(json_msg);
-            enviar_json(json_str);
+            send_json(json_str);
             json_object_put(json_msg);
         }
     }
     else
     {
 
+        // ENVIO DE MENSAJE NORMAL
         json_msg = json_object_new_object();
         json_object_object_add(json_msg, "accion", json_object_new_string("BROADCAST"));
         json_object_object_add(json_msg, "nombre_emisor", json_object_new_string(username));
         json_object_object_add(json_msg, "mensaje", json_object_new_string(message));
         json_str = json_object_to_json_string(json_msg);
-        enviar_json(json_str);
+        send_json(json_str);
         json_object_put(json_msg);
 
         char history_msg[256];
@@ -305,7 +292,7 @@ void *receive_thread(void *arg)
                     if (strcmp(emisor_str, username) != 0)
                     {
                         char history_msg[256];
-                        snprintf(history_msg, sizeof(history_msg), "%s (broadcast): %s", emisor_str, mensaje_str);
+                        snprintf(history_msg, sizeof(history_msg), "[%s]: %s", emisor_str, mensaje_str);
                         add_message_to_message_list(history_msg);
                         mostrar_mensajes();
                     }
@@ -449,7 +436,7 @@ int main(int argc, char *argv[])
 
         if (strlen(message) > 0)
         {
-            manejar_comando(message, username, server_ip);
+            handle_special_commads(message, username, server_ip);
         }
     }
 
