@@ -1,12 +1,9 @@
 #ifdef _WIN32
-#ifndef INET_ADDRSTRLEN
-#define INET_ADDRSTRLEN 16
-#endif
 
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <process.h>
-#include <ws2tcpip.h>
 #define socklen_t int
 #define close(sock) closesocket(sock)
 #define CLEAR_SCREEN() system("cls")
@@ -49,7 +46,7 @@ void remove_client_from_server(socket_t socket);
 void send_json_response(socket_t socket, const char *status, const char *key, const char *message);
 int register_new_client(socket_t socket, const char *username, const char *ip_address);
 
-Client *clients[MAX_CLIENTS];
+Client *clients[MAX_CLIENTS] = {NULL}; // Inicializado a NULL
 #ifdef _WIN32
 HANDLE clients_mutex;
 #else
@@ -60,10 +57,14 @@ void *handle_client(void *socket_desc)
 {
 	socket_t sock = *(socket_t *)socket_desc;
 	free(socket_desc);
-	char buffer[1024];
-	int read_size;
+	char buffer[1024] = {0};
 
-	read_size = recv(sock, buffer, sizeof(buffer), 0);
+#ifdef _WIN32
+	DWORD timeout = 5000;
+	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+#endif
+
+	int read_size = recv(sock, buffer, sizeof(buffer), 0);
 	if (read_size <= 0)
 	{
 		close(sock);
@@ -72,8 +73,14 @@ void *handle_client(void *socket_desc)
 	buffer[read_size] = '\0';
 
 	struct json_object *parsed_json = json_tokener_parse(buffer);
-	struct json_object *tipo;
+	if (!parsed_json)
+	{
+		send_json_response(sock, "ERROR", "razon", "JSON inválido");
+		close(sock);
+		return NULL;
+	}
 
+	struct json_object *tipo;
 	if (json_object_object_get_ex(parsed_json, "tipo", &tipo) &&
 		strcmp(json_object_get_string(tipo), "REGISTRO") == 0)
 	{
@@ -91,12 +98,12 @@ void *handle_client(void *socket_desc)
 	while ((read_size = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0)
 	{
 		buffer[read_size] = '\0';
-		printf("Mensaje recibido en el servidor: %s\n", buffer);
+		printf("Mensaje recibido: %s\n", buffer);
 
 		struct json_object *msg_json = json_tokener_parse(buffer);
 		if (!msg_json)
 		{
-			printf("JSON inválido recibido\n");
+			printf("JSON inválido\n");
 			continue;
 		}
 
@@ -176,7 +183,7 @@ void *handle_client(void *socket_desc)
 	return NULL;
 }
 
-handle_register_client(struct json_object *parsed_json, socket_t sock)
+void handle_register_client(struct json_object *parsed_json, socket_t sock)
 {
 	struct json_object *usuario;
 	if (json_object_object_get_ex(parsed_json, "usuario", &usuario))
@@ -185,9 +192,20 @@ handle_register_client(struct json_object *parsed_json, socket_t sock)
 
 		struct sockaddr_in peer_address;
 		socklen_t peer_address_len = sizeof(peer_address);
-		getpeername(sock, (struct sockaddr *)&peer_address, &peer_address_len);
+		if (getpeername(sock, (struct sockaddr *)&peer_address, &peer_address_len) != 0)
+		{
+			perror("getpeername failed");
+			send_json_response(sock, "ERROR", "razon", "Error al obtener IP");
+			return;
+		}
+
 		char client_ip[INET_ADDRSTRLEN];
-		inet_ntop(AF_INET, &peer_address.sin_addr, client_ip, INET_ADDRSTRLEN);
+		if (!inet_ntop(AF_INET, &peer_address.sin_addr, client_ip, INET_ADDRSTRLEN))
+		{
+			perror("inet_ntop failed");
+			send_json_response(sock, "ERROR", "razon", "Error al convertir IP");
+			return;
+		}
 
 		if (register_new_client(sock, username, client_ip))
 		{
@@ -442,67 +460,95 @@ int main(int argc, char *argv[])
 	WSADATA wsaData;
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 	{
-		fprintf(stderr, "Error al inicializar Winsock\n");
+		fprintf(stderr, "WSAStartup failed\n");
 		return 1;
 	}
 	clients_mutex = CreateMutex(NULL, FALSE, NULL);
+	if (clients_mutex == NULL)
+	{
+		fprintf(stderr, "CreateMutex error: %d\n", GetLastError());
+		return 1;
+	}
 #endif
-
-	socket_t server_fd, new_socket;
-	struct sockaddr_in address;
-	socklen_t addrlen = sizeof(address);
-	int port;
 
 	if (argc != 2)
 	{
-		printf("Uso: %s <puerto>\n", argv[0]);
+		fprintf(stderr, "Uso: %s <puerto>\n", argv[0]);
 		return 1;
 	}
 
-	port = atoi(argv[1]);
+	int port = atoi(argv[1]);
 	if (port <= 0 || port > 65535)
 	{
-		printf("Puerto inválido. Debe ser un número entre 1 y 65535\n");
+		fprintf(stderr, "Puerto inválido\n");
 		return 1;
 	}
 
-	server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons(port);
+	socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (server_fd == INVALID_SOCKET)
+	{
+		perror("socket failed");
+		return 1;
+	}
+
+	struct sockaddr_in address = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = INADDR_ANY,
+		.sin_port = htons(port)};
 
 	if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
 	{
-		perror("Error en bind");
+		perror("bind failed");
+		close(server_fd);
 		return 1;
 	}
 
-	listen(server_fd, MAX_CLIENTS);
+	if (listen(server_fd, MAX_CLIENTS) < 0)
+	{
+		perror("listen failed");
+		close(server_fd);
+		return 1;
+	}
+
 	printf("Servidor escuchando en puerto %d\n", port);
 
 	while (1)
 	{
-		new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
-		if (new_socket < 0)
+		struct sockaddr_in client_addr;
+		socklen_t client_len = sizeof(client_addr);
+		socket_t new_socket = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+
+		if (new_socket == INVALID_SOCKET)
 		{
-			perror("Error aceptando conexión");
+			perror("accept failed");
 			continue;
 		}
 
-		printf("Nueva conexión aceptada desde %s:%d\n",
-			   inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+		char client_ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+		printf("Conexión aceptada desde %s:%d\n", client_ip, ntohs(client_addr.sin_port));
+
+		socket_t *new_sock = malloc(sizeof(socket_t));
+		if (!new_sock)
+		{
+			perror("malloc failed");
+			close(new_socket);
+			continue;
+		}
+		*new_sock = new_socket;
 
 #ifdef _WIN32
-		socket_t *new_sock = malloc(sizeof(socket_t));
-		*new_sock = new_socket;
-		_beginthreadex(NULL, 0, (void *)handle_client, new_sock, 0, NULL);
+		if (_beginthreadex(NULL, 0, (_beginthreadex_proc_type)handle_client, new_sock, 0, NULL) == 0)
+		{
 #else
 		pthread_t thread_id;
-		socket_t *new_sock = malloc(sizeof(socket_t));
-		*new_sock = new_socket;
-		pthread_create(&thread_id, NULL, handle_client, new_sock);
-		pthread_detach(thread_id);
+		if (pthread_create(&thread_id, NULL, handle_client, new_sock) != 0)
+		{
 #endif
+			perror("Error al crear hilo");
+			free(new_sock);
+			close(new_socket);
+		}
 	}
 
 	close(server_fd);
